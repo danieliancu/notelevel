@@ -56,7 +56,8 @@ class SecurityHeaders
             "default-src 'self'",
             'script-src '.implode(' ', $scriptSources),
             'style-src '.implode(' ', $styleSources),
-            "img-src 'self' data: blob:",
+            // Filament's default avatar provider generates initials avatars via ui-avatars.com.
+            "img-src 'self' data: blob: https://ui-avatars.com",
             'font-src '.implode(' ', ["'self'", 'data:', ...$fontFileSources]),
             'connect-src '.implode(' ', $connectSources),
             'worker-src '.implode(' ', $workerSources),
