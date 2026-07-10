@@ -15,6 +15,12 @@ class SecurityHeaders
         $styleSources = ["'self'", "'unsafe-inline'"];
         $connectSources = ["'self'"];
 
+        // Filament's admin panel relies on Alpine.js/Livewire evaluating
+        // expressions via `new Function()`, which requires 'unsafe-eval'.
+        if ($request->is('admin') || $request->is('admin/*')) {
+            $scriptSources[] = "'unsafe-eval'";
+        }
+
         // Vite serves development assets and HMR from the origin recorded in
         // public/hot (often [::1]:5173), which is intentionally separate from
         // the application origin.
