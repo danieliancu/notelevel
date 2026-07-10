@@ -16,7 +16,11 @@ class SecurityHeaders
         // the canvas editor needs them explicitly allowed.
         $cdnSources = ['https://cdn.jsdelivr.net', 'https://esm.run'];
         $scriptSources = ["'self'", "'unsafe-inline'", ...$cdnSources];
-        $styleSources = ["'self'", "'unsafe-inline'"];
+        // Google Fonts (blog/legal/marketing) and Bunny Fonts (auth/account
+        // layouts) are loaded via <link> stylesheets, not bundled.
+        $fontCdnSources = ['https://fonts.googleapis.com', 'https://fonts.bunny.net'];
+        $fontFileSources = ['https://fonts.gstatic.com', 'https://fonts.bunny.net'];
+        $styleSources = ["'self'", "'unsafe-inline'", ...$fontCdnSources];
         $connectSources = ["'self'"];
         $workerSources = ["'self'", 'blob:', ...$cdnSources];
 
@@ -53,7 +57,7 @@ class SecurityHeaders
             'script-src '.implode(' ', $scriptSources),
             'style-src '.implode(' ', $styleSources),
             "img-src 'self' data: blob:",
-            "font-src 'self' data:",
+            'font-src '.implode(' ', ["'self'", 'data:', ...$fontFileSources]),
             'connect-src '.implode(' ', $connectSources),
             'worker-src '.implode(' ', $workerSources),
             "object-src 'none'",
