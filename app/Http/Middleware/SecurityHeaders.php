@@ -15,9 +15,13 @@ class SecurityHeaders
         $styleSources = ["'self'", "'unsafe-inline'"];
         $connectSources = ["'self'"];
 
-        // Filament's admin panel relies on Alpine.js/Livewire evaluating
-        // expressions via `new Function()`, which requires 'unsafe-eval'.
-        if ($request->is('admin') || $request->is('admin/*')) {
+        // Alpine.js/Livewire (Filament admin, auth forms, account/profile,
+        // canvas) evaluate expressions via `new Function()`, which requires
+        // 'unsafe-eval'. Only the static marketing pages avoid Alpine, so
+        // keep the stricter policy there and relax it everywhere else.
+        $isStaticMarketingPage = $request->routeIs(['home', 'blog.*', 'privacy', 'terms', 'cookies', 'sitemap']);
+
+        if (! $isStaticMarketingPage) {
             $scriptSources[] = "'unsafe-eval'";
         }
 
