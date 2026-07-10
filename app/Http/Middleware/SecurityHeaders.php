@@ -11,9 +11,14 @@ class SecurityHeaders
     public function handle(Request $request, Closure $next): Response
     {
         $response = $next($request);
-        $scriptSources = ["'self'", "'unsafe-inline'"];
+        // MathJax, pdf.js, pdf-lib, and MathLive are loaded from these CDNs
+        // in resources/views/canvas/show.blade.php rather than bundled, so
+        // the canvas editor needs them explicitly allowed.
+        $cdnSources = ['https://cdn.jsdelivr.net', 'https://esm.run'];
+        $scriptSources = ["'self'", "'unsafe-inline'", ...$cdnSources];
         $styleSources = ["'self'", "'unsafe-inline'"];
         $connectSources = ["'self'"];
+        $workerSources = ["'self'", 'blob:', ...$cdnSources];
 
         // Alpine.js/Livewire (Filament admin, auth forms, account/profile,
         // canvas) evaluate expressions via `new Function()`, which requires
@@ -50,7 +55,7 @@ class SecurityHeaders
             "img-src 'self' data: blob:",
             "font-src 'self' data:",
             'connect-src '.implode(' ', $connectSources),
-            "worker-src 'self' blob:",
+            'worker-src '.implode(' ', $workerSources),
             "object-src 'none'",
             "base-uri 'self'",
             "frame-ancestors 'none'",
