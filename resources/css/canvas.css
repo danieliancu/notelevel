@@ -11,6 +11,9 @@
     --danger: #c2410c;
     --shadow: 0 24px 70px rgba(16, 24, 40, 0.24);
     --workspace-offset-y: 0px;
+    --canvas-left: 0px;
+    --canvas-top: 0px;
+    --canvas-right: 0px;
 }
 
 * {
@@ -40,10 +43,11 @@ body {
 #pad,
 .guide-canvas {
     position: fixed;
-    inset: 0;
-    width: 100vw;
-    height: 100vh;
-    height: 100dvh;
+    left: var(--canvas-left);
+    top: var(--canvas-top);
+    width: calc(100vw - var(--canvas-left) - var(--canvas-right));
+    height: calc(100vh - var(--canvas-top));
+    height: calc(100dvh - var(--canvas-top));
     display: block;
     cursor: crosshair;
     touch-action: none;
@@ -96,7 +100,11 @@ body {
 
 .text-layer {
     position: fixed;
-    inset: 0;
+    left: var(--canvas-left);
+    top: var(--canvas-top);
+    width: calc(100vw - var(--canvas-left) - var(--canvas-right));
+    height: calc(100vh - var(--canvas-top));
+    height: calc(100dvh - var(--canvas-top));
     z-index: 12;
     pointer-events: none;
 }
@@ -309,7 +317,7 @@ body {
     border: 1px solid rgba(15, 118, 110, 0.8);
     background: rgba(15, 118, 110, 0.08);
     pointer-events: none;
-    transform: translateY(var(--workspace-offset-y)) rotate(var(--selection-rotate));
+    transform: translate(var(--canvas-left), calc(var(--workspace-offset-y) + var(--canvas-top))) rotate(var(--selection-rotate));
     transform-origin: center center;
 }
 
@@ -405,7 +413,7 @@ body {
 
 .virtual-keyboard {
     position: fixed;
-    left: max(14px, env(safe-area-inset-left));
+    left: calc(var(--canvas-left) + max(14px, env(safe-area-inset-left)));
     right: max(14px, env(safe-area-inset-right));
     bottom: 0;
     z-index: 40;
@@ -480,6 +488,17 @@ body {
     font-size: 18px;
 }
 
+.vk-key-paste {
+    background: #adb5c2;
+    display: grid;
+    place-items: center;
+}
+
+.vk-key-paste svg {
+    width: 18px;
+    height: 18px;
+}
+
 .brush-cursor.is-eraser {
     background: rgba(255, 255, 255, 0.28);
     border-style: dashed;
@@ -487,7 +506,7 @@ body {
 
 .chat-bar {
     position: fixed;
-    left: max(14px, env(safe-area-inset-left));
+    left: calc(var(--canvas-left) + max(14px, env(safe-area-inset-left)));
     right: max(14px, env(safe-area-inset-right));
     bottom: 0;
     z-index: 42;
@@ -501,27 +520,23 @@ body {
     transform: translateY(105%);
     transition: transform 180ms ease;
     pointer-events: none;
-    max-width: 800px;
-    margin:auto;
     border-radius:10px;
+    max-width: 800px;
+    margin: auto;
 }
 
 .chat-bar.is-visible {
     transform: translateY(0);
     pointer-events: auto;
-        max-width: 800px;
-    margin:auto;
     bottom:60px;
 }
 
 .chat-thread {
     position: fixed;
-    left: max(14px, env(safe-area-inset-left));
+    left: calc(var(--canvas-left) + max(14px, env(safe-area-inset-left)));
     right: max(14px, env(safe-area-inset-right));
     bottom: 0;
     z-index: 41;
-    max-width: 800px;
-    margin: auto;
     display: flex;
     flex-direction: column;
     gap: 8px;
@@ -530,6 +545,8 @@ body {
     overflow-y: auto;
     overscroll-behavior: contain;
     pointer-events: none;
+    max-width: 800px;
+    margin: auto;
     padding: 0 4px;
     transition: max-height 220ms ease, opacity 180ms ease;
     scrollbar-width: thin;
@@ -752,7 +769,7 @@ body {
     line-height: 1.3;
 }
 
-.chat-mic-btn,
+.chat-close-btn,
 .chat-send-btn {
     flex: 0 0 auto;
     width: 46px;
@@ -764,12 +781,12 @@ body {
     cursor: pointer;
 }
 
-.chat-mic-btn {
-    background: #eefafa;
-    color: #008c86;
+.chat-close-btn {
+    background: #dc2626;
+    color: #ffffff;
 }
 
-.chat-mic-btn svg,
+.chat-close-btn svg,
 .chat-send-btn svg {
     width: 22px;
     height: 22px;
@@ -778,11 +795,6 @@ body {
     stroke-width: 2;
     stroke-linecap: round;
     stroke-linejoin: round;
-}
-
-.chat-mic-btn.is-active {
-    background: #008c86;
-    color: #ffffff;
 }
 
 .chat-send-btn {
@@ -796,7 +808,7 @@ body {
 }
 
 .chat-send-btn:hover,
-.chat-mic-btn:hover {
+.chat-close-btn:hover {
     filter: brightness(1.05);
 }
 
@@ -929,7 +941,7 @@ body {
 
 .page-control {
     position: fixed;
-    left: max(12px, env(safe-area-inset-left));
+    left: calc(var(--canvas-left) + max(12px, env(safe-area-inset-left)));
     bottom: max(12px, env(safe-area-inset-bottom));
     z-index: 15;
     display: flex;
@@ -973,7 +985,7 @@ body {
 
 .delete-page-float {
     position: fixed;
-    left: 50%;
+    left: calc(50% + ((var(--canvas-left) - var(--canvas-right)) / 2));
     bottom: -13px;
     z-index: 15;
     width: clamp(54px, 12vw, 72px);
@@ -1002,16 +1014,15 @@ body {
 
 .toolbar {
     position: fixed;
-    top: max(14px, env(safe-area-inset-top));
-    left: max(14px, env(safe-area-inset-left));
+    top: max(20px, env(safe-area-inset-top));
+    left: max(20px, env(safe-area-inset-left));
+    bottom: max(20px, env(safe-area-inset-bottom));
     z-index: 20;
     display: flex;
     flex-direction: column;
     gap: 10px;
-    height: calc(100dvh - max(14px, env(safe-area-inset-top)) - max(54px, env(safe-area-inset-bottom)));
-    padding: 0;
+    padding: 10px;
     border: 0;
-    border-radius: 0;
     background: transparent;
     box-shadow: none;
     backdrop-filter: none;
@@ -1027,14 +1038,12 @@ body {
     position: relative;
     width: 58px;
     height: 58px;
+    min-height: 58px;
     display: inline-grid;
     place-items: center;
     border: 0;
-    border-radius: 10px;
-    background: var(--panel);
-    backdrop-filter: blur(8px);
+    background: transparent;
     color: #1d2939;
-    box-shadow: 0 2px 8px rgba(16, 24, 40, 0.10);
     cursor: pointer;
 }
 
@@ -1174,7 +1183,7 @@ body.has-transient-toolbar-menu .ai-icon.is-active:not(.is-menu-active) {
        să nu mai porneasca de la marginea din stânga, ca sa nu acopere iconițele din toolbar. */
     .chat-bar,
     .chat-thread {
-        left: calc(86px + env(safe-area-inset-left));
+        left: calc(135px + env(safe-area-inset-left));
     }
 }
 
@@ -1319,6 +1328,13 @@ body.has-transient-toolbar-menu .ai-icon.is-active:not(.is-menu-active) {
     font: inherit;
     font-size: 12px;
     font-weight: 700;
+}
+
+.file-menu-logo {
+    width: 20px;
+    height: 20px;
+    border-radius: 50%;
+    object-fit: cover;
 }
 
 .toolbar-menu > button:hover,
@@ -3148,7 +3164,7 @@ input[type="color"] {
         width: calc(100vw - 28px);
         height: var(--tool-size);
         max-width: calc(100vw - 28px);
-        padding: var(--toolbar-pad);
+        padding: 0;
         overflow: hidden;
         box-shadow: none;
     }
@@ -3175,7 +3191,9 @@ input[type="color"] {
     }
 
     .toolbar-menu {
-        top: 65px;
+        --toolbar-gap: clamp(5px, 1.8vw, 10px);
+        --tool-size: min(52px, calc((100vw - 28px - (var(--toolbar-gap) * 7)) / 8));
+        top: calc(max(14px, env(safe-area-inset-top)) + var(--tool-size) + 10px);
         left: max(14px, env(safe-area-inset-left));
         width: calc(100vw - 28px);
     }
@@ -3268,6 +3286,7 @@ input[type="color"] {
     .icon-button {
         width: var(--tool-size);
         height: var(--tool-size);
+        min-height: 0;
         border-radius: clamp(7px, 2vw, 10px);
     }
 
@@ -4452,230 +4471,321 @@ color: #0f766e;
   height: 16px;
 }
 
-/* ===== Account summary panel (slide panel content) ===== */
-.account-panel {
+/* ===== Account summary panel (slide panel content) =====
+   Mirrors resources/views/account/index.blade.php (Tailwind) 1:1. */
+.acct {
   display: flex;
   flex-direction: column;
-  gap: 20px;
+  gap: 32px;
+  font-family: ui-sans-serif, system-ui, -apple-system, "Segoe UI", Roboto, Arial, sans-serif;
 }
 
-.account-panel-identity {
+.acct-signout-row {
   display: flex;
-  align-items: center;
-  gap: 12px;
-  flex-wrap: wrap;
+  justify-content: flex-end;
+  gap: 8px;
 }
 
-.account-panel-identity-info {
-  flex: 1 1 auto;
-  min-width: 0;
-}
-
-.account-panel-delete-wrap {
-  width: 100%;
-  margin-left: auto;
-  text-align: right;
-}
-
-.account-panel-delete-btn {
+.acct-signout-btn {
   display: inline-flex;
   align-items: center;
-  justify-content: center;
-  padding: 7px 12px;
+  gap: 6px;
+  padding: 6px 12px;
   border: 0;
   border-radius: 8px;
-  background: #dc2626;
-  color: #ffffff;
-  font-size: 11px;
-  font-weight: 800;
-  letter-spacing: 0.02em;
-  text-transform: uppercase;
+  background: transparent;
+  color: #6b7280;
+  font-size: 14px;
+  font-weight: 500;
   text-decoration: none;
   cursor: pointer;
-  transition: background 0.15s ease;
+  transition: background 0.15s ease, color 0.15s ease;
 }
 
-.account-panel-delete-btn:hover {
-  background: #b91c1c;
+.acct-signout-btn:hover {
+  color: #dc2626;
+  background: #fef2f2;
 }
 
-.account-panel-delete-caption {
-  margin-top: 6px;
-  font-size: 11px;
-  color: rgba(102, 112, 133, 0.7);
-  text-align: right;
+.acct-signout-btn svg {
+  width: 16px;
+  height: 16px;
 }
 
-.account-panel-avatar {
-  width: 48px;
-  height: 48px;
-  min-width: 48px;
+.acct-row {
+  display: grid;
+  grid-template-columns: 1fr;
+  gap: 24px;
+}
+
+@media (min-width: 640px) {
+  .acct-row-3 { grid-template-columns: repeat(3, minmax(0, 1fr)); }
+  .acct-row-2 { grid-template-columns: repeat(2, minmax(0, 1fr)); }
+  .acct-col-2 { grid-column: span 2 / span 2; }
+}
+
+.acct-card {
+  background: #ffffff;
+  border: 1px solid #f3f4f6;
+  border-radius: 16px;
+  box-shadow: 0 1px 2px 0 rgba(0, 0, 0, 0.05);
+  padding: 24px;
+}
+
+.acct-plan-card {
+  display: flex;
+  flex-direction: column;
+}
+
+.acct-label {
+  margin: 0 0 16px;
+  font-size: 12px;
+  font-weight: 600;
+  text-transform: uppercase;
+  letter-spacing: 0.05em;
+  color: #6b7280;
+}
+
+.acct-identity {
+  display: flex;
+  align-items: center;
+  gap: 16px;
+}
+
+.acct-avatar {
+  width: 56px;
+  height: 56px;
+  min-width: 56px;
   border-radius: 50%;
-  background: var(--accent);
+  background: #4f46e5;
   color: #ffffff;
   display: grid;
   place-items: center;
+  font-size: 20px;
+  font-weight: 600;
+}
+
+.acct-name {
   font-size: 18px;
-  font-weight: 800;
+  font-weight: 600;
+  color: #111827;
 }
 
-.account-panel-name {
-  font-size: 15px;
-  font-weight: 800;
-  color: var(--text);
+.acct-email {
+  font-size: 14px;
+  color: #6b7280;
 }
 
-.account-panel-email {
-  font-size: 13px;
-  color: rgba(102, 112, 133, 0.7);
+.acct-dl {
+  margin-top: 24px;
+  display: grid;
+  grid-template-columns: repeat(2, minmax(0, 1fr));
+  gap: 16px;
+  font-size: 14px;
 }
 
-.account-panel-meta {
-  display: flex;
-  flex-wrap: wrap;
-  align-items: center;
-  gap: 10px;
-  font-size: 12px;
+.acct-dt {
+  color: #9ca3af;
 }
 
-.account-panel-meta > div {
-  flex: 1 1 auto;
-  min-width: 90px;
-}
-
-.account-panel-meta-label {
-  color: rgba(102, 112, 133, 0.6);
-  text-transform: uppercase;
-  letter-spacing: 0.06em;
-  font-weight: 700;
-  font-size: 10px;
-}
-
-.account-panel-meta-value {
-  color: var(--text);
-  font-weight: 700;
+.acct-dd {
   margin-top: 2px;
+  color: #1f2937;
+  font-weight: 500;
+}
+
+.acct-capitalize {
   text-transform: capitalize;
 }
 
-.account-panel-card {
-  border: 1px solid var(--border);
-  border-radius: 12px;
-  padding: 14px 16px;
+.acct-actions {
+  margin-top: 24px;
+  padding-top: 24px;
+  border-top: 1px solid #f3f4f6;
+  display: flex;
+  flex-wrap: wrap;
+  gap: 12px;
 }
 
-.account-panel-card-header {
+.acct-btn {
+  display: inline-flex;
+  align-items: center;
+  gap: 6px;
+  padding: 8px 16px;
+  border-radius: 8px;
+  font-size: 14px;
+  font-weight: 500;
+  text-decoration: none;
+  cursor: pointer;
+  border: 0;
+  transition: background 0.15s ease;
+}
+
+.acct-btn-indigo {
+  background: #eef2ff;
+  color: #4338ca;
+}
+
+.acct-btn-indigo:hover {
+  background: #e0e7ff;
+}
+
+.acct-btn-danger {
+  background: #dc2626;
+  color: #ffffff;
+  font-weight: 600;
+  font-size: 12px;
+  letter-spacing: 0.05em;
+  text-transform: uppercase;
+  padding: 8px 16px;
+}
+
+.acct-btn-danger:hover {
+  background: #ef4444;
+}
+
+.acct-plan-head {
   display: flex;
   align-items: center;
   justify-content: space-between;
-  margin-bottom: 8px;
+  margin-bottom: 16px;
 }
 
-.account-panel-card-title {
-  font-size: 11px;
-  font-weight: 800;
-  text-transform: uppercase;
-  letter-spacing: 0.06em;
-  color: rgba(102, 112, 133, 0.6);
-}
-
-.account-panel-plan-badge {
+.acct-badge {
   display: inline-flex;
   align-items: center;
-  margin-top: 6px;
   padding: 2px 10px;
   border-radius: 999px;
-  font-size: 11px;
-  font-weight: 800;
-  letter-spacing: 0.04em;
+  font-size: 12px;
+  font-weight: 500;
+  position: relative;
+  top: -8px;
 }
 
-.account-panel-plan-badge.is-free {
-  background: rgba(16, 185, 129, 0.14);
-  color: #059669;
+.acct-badge.is-free {
+  background: #f3f4f6;
+  color: #4b5563;
 }
 
-.account-panel-plan-badge.is-premium {
-  background: rgba(245, 158, 11, 0.16);
-  color: #b45309;
+.acct-badge.is-premium {
+  background: #e0e7ff;
+  color: #4338ca;
 }
 
-.account-panel-stat-row {
+.acct-price {
+  margin: 0;
+  font-size: 30px;
+  font-weight: 700;
+  color: #111827;
+}
+
+.acct-price-interval {
+  font-size: 16px;
+  font-weight: 400;
+  color: #9ca3af;
+}
+
+.acct-spacer {
+  flex: 1 1 auto;
+  min-height: 16px;
+}
+
+.acct-upgrade-btn {
+  width: 100%;
+  display: inline-flex;
+  justify-content: center;
+  align-items: center;
+  padding: 8px 16px;
+  border: 0;
+  border-radius: 8px;
+  background: #f3f4f6;
+  color: #9ca3af;
+  font-size: 14px;
+  font-weight: 500;
+  cursor: not-allowed;
+}
+
+.acct-thankyou {
+  font-size: 12px;
+  color: #9ca3af;
+  text-align: center;
+}
+
+.acct-note {
+  font-size: 12px;
+  color: #9ca3af;
+}
+
+.acct-stat-row {
   display: flex;
-  align-items: baseline;
+  align-items: flex-end;
   justify-content: space-between;
   margin-bottom: 6px;
 }
 
-.account-panel-stat-value {
-  font-size: 20px;
-  font-weight: 800;
-  color: var(--text);
+.acct-stat-value {
+  font-size: 24px;
+  font-weight: 700;
+  color: #111827;
 }
 
-.account-panel-stat-cap {
-  font-size: 12px;
-  color: rgba(102, 112, 133, 0.6);
+.acct-stat-cap {
+  font-size: 14px;
+  color: #9ca3af;
 }
 
-.account-panel-bar-track {
+.acct-bar-track {
   width: 100%;
-  height: 8px;
+  height: 10px;
   border-radius: 999px;
-  background: rgba(102, 112, 133, 0.12);
+  background: #f3f4f6;
   overflow: hidden;
 }
 
-.account-panel-bar-fill {
+.acct-bar-fill {
   height: 100%;
   border-radius: 999px;
-  background: var(--accent);
   transition: width 0.2s ease;
 }
 
-.account-panel-bar-fill.is-warning {
-  background: #f59e0b;
+.acct-bar-indigo { background: #6366f1; }
+.acct-bar-amber { background: #f59e0b; }
+.acct-bar-red { background: #ef4444; }
+.acct-bar-emerald { background: #10b981; }
+
+.acct-warning {
+  margin-top: 8px;
+  font-size: 12px;
+  font-weight: 500;
 }
 
-.account-panel-bar-fill.is-danger {
-  background: #ef4444;
+.acct-warning.is-warning { color: #d97706; }
+.acct-warning.is-danger { color: #dc2626; }
+
+.acct-subcard {
+  background: #f9fafb;
+  border: 1px solid #f3f4f6;
+  border-radius: 12px;
+  padding: 16px;
 }
 
-.account-panel-note {
-  margin-top: 6px;
-  font-size: 11px;
-  color: rgba(102, 112, 133, 0.6);
+.acct-subcard-label {
+  font-size: 12px;
+  text-transform: uppercase;
+  letter-spacing: 0.05em;
+  color: #9ca3af;
 }
 
-.account-panel-actions {
-  display: flex;
-  gap: 10px;
-  flex-wrap: wrap;
+.acct-subcard-value {
+  margin-top: 4px;
+  font-size: 20px;
+  font-weight: 600;
+  color: #111827;
 }
 
-.account-panel-signout:hover {
-  background: rgba(239, 68, 68, 0.08);
-  border-color: transparent;
-  color: #ef4444;
-}
-
-.account-panel-meta-btn.back-home-btn {
-  padding: 10px 14px;
-  font-size: 11px;
-  gap: 4px;
-  background: transparent;
-  border: none;
-  box-shadow: none;
-}
-
-.account-panel-meta-btn.back-home-btn:hover {
-  background: rgba(0, 0, 0, 0.05);
-  border-color: transparent;
-}
-
-.account-panel-meta-btn.back-home-btn svg {
-  width: 13px;
-  height: 13px;
+.acct-subcard-cap {
+  font-size: 12px;
+  color: #9ca3af;
 }
 /* Keyboard and motion accessibility baseline. Kept at the end so it wins over
    component-specific outline resets above. */

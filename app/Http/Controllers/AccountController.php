@@ -46,6 +46,20 @@ class AccountController extends Controller
                 'pct' => $data['costPct'],
                 'unlimited' => $data['costCap'] === null,
                 'resetsOn' => $user->nextAiUsageResetAt()->format('d M'),
+                'byAction' => [
+                    'translate' => [
+                        'calls' => (int) ($data['usageByAction']->get('translate')->calls ?? 0),
+                        'tokens' => (int) ($data['usageByAction']->get('translate')->tokens ?? 0),
+                    ],
+                    'chat' => [
+                        'calls' => (int) ($data['usageByAction']->get('chat')->calls ?? 0),
+                        'tokens' => (int) ($data['usageByAction']->get('chat')->tokens ?? 0),
+                    ],
+                    'read' => [
+                        'calls' => (int) ($data['usageByAction']->get('read')->calls ?? 0),
+                        'tokens' => (int) ($data['usageByAction']->get('read')->tokens ?? 0),
+                    ],
+                ],
             ],
             'canvasPages' => [
                 'used' => $data['pagesUsed'],

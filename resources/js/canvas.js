@@ -71,7 +71,7 @@
         const chatBar = document.getElementById('chatBar');
         const chatThread = document.getElementById('chatThread');
         const chatInput = document.getElementById('chatInput');
-        const chatMicBtn = document.getElementById('chatMicBtn');
+        const chatCloseBtn = document.getElementById('chatCloseBtn');
         const chatSendBtn = document.getElementById('chatSendBtn');
         const chatSlashBtn = document.getElementById('chatSlashBtn');
         const chatSlashMenu = document.getElementById('chatSlashMenu');
@@ -222,22 +222,19 @@
         ['q', 'w', 'e', 'r', 't', 'y', 'u', 'i', 'o', 'p'],
         ['a', 's', 'd', 'f', 'g', 'h', 'j', 'k', 'l'],
         ['shift', 'z', 'x', 'c', 'v', 'b', 'n', 'm', 'backspace'],
-        ['numbers', 'space', 'enter', 'done'],
-        ['left', 'paste', 'right']
+        ['numbers', 'paste', 'space', 'enter', 'done']
         ],
         numbers: [
         ['1', '2', '3', '4', '5', '6', '7', '8', '9', '0'],
         ['-', '/', ':', ';', '(', ')', '$', '&', '@', '"', '%'],
         ['symbols', '.', ',', '?', '!', "'", 'backspace'],
-        ['letters', 'space', 'enter', 'done'],
-        ['left', 'paste', 'right']
+        ['letters', 'paste', 'space', 'enter', 'done']
         ],
         symbols: [
         ['[', ']', '{', '}', '#', '%', '^', '*', '+', '='],
         ['_', '\\', '|', '~', '<', '>', '`', '.', ',', '-'],
         ['numbers', '.', ',', '?', '!', "'", 'backspace'],
-        ['letters', 'space', 'enter', 'done'],
-        ['left', 'paste', 'right']
+        ['letters', 'paste', 'space', 'enter', 'done']
         ]
         };
 
@@ -252,9 +249,13 @@
 
         // Ascunde bara și resetează thread-ul
         chatToggle.checked = false;
+        if (chatMenuRow) {
+            chatMenuRow.classList.remove('is-active');
+        }
+        syncAiButtonState();
         chatBar.classList.remove('is-visible');
         chatBar.setAttribute('aria-hidden', 'true');
-        
+
         if (chatThread) {
             chatThread.innerHTML = '';
             chatThread.classList.remove('has-messages');
@@ -502,8 +503,19 @@
             textColourRow.appendChild(addButton);
         }
 
+        function highestFilledPage() {
+            let max = 1;
+            const candidates = new Set([...pageModels.keys(), ...pages.keys()]);
+            for (const page of candidates) {
+                if (pageHasContent(page)) {
+                    max = Math.max(max, page);
+                }
+            }
+            return Math.max(max, currentPage);
+        }
+
         function updatePageControl() {
-            pageLabel.textContent = `page ${currentPage}`;
+            pageLabel.textContent = `page ${currentPage} of ${highestFilledPage()}`;
             prevPageBtn.disabled = currentPage <= 1;
         }
 
@@ -1117,9 +1129,10 @@
         function pagePointFromEvent(event) {
             const model = currentPageModel();
             const rect = pageDisplayRect(model);
+            const canvasPoint = pointFromEvent(event);
             return {
-                x: Math.max(0, Math.min(model.baseWidth, (event.clientX - rect.x) / rect.scale)),
-                y: Math.max(0, Math.min(model.baseHeight, (event.clientY - rect.y) / rect.scale))
+                x: Math.max(0, Math.min(model.baseWidth, (canvasPoint.x - rect.x) / rect.scale)),
+                y: Math.max(0, Math.min(model.baseHeight, (canvasPoint.y - rect.y) / rect.scale))
             };
         }
 
@@ -3101,7 +3114,7 @@
             if (key === 'done') return 'Done';
             if (key === 'left') return '‹';
             if (key === 'right') return '›';
-            if (key === 'paste') return 'Paste';
+            if (key === 'paste') return '';
             return virtualKeyboardShift && /^[a-z]$/.test(key) ? key.toUpperCase() : key;
         }
 
@@ -3120,12 +3133,17 @@
                     button.type = 'button';
                     button.className = 'vk-key';
                     button.dataset.key = key;
-                    button.textContent = keyLabel(key);
+                    if (key === 'paste') {
+                        button.innerHTML = '<svg viewBox="0 0 24 24" aria-hidden="true"><path d="M9 4h6a1 1 0 0 1 1 1v1h1.5A1.5 1.5 0 0 1 19 7.5v12A1.5 1.5 0 0 1 17.5 21h-11A1.5 1.5 0 0 1 5 19.5v-12A1.5 1.5 0 0 1 6.5 6H8V5a1 1 0 0 1 1-1Z" fill="none" stroke="currentColor" stroke-width="1.6" stroke-linecap="round" stroke-linejoin="round"/><path d="M9 4h6v2H9z" fill="currentColor"/></svg>';
+                    } else {
+                        button.textContent = keyLabel(key);
+                    }
                     button.classList.toggle('is-active', key === 'shift' && virtualKeyboardShift);
-                    button.classList.toggle('vk-key-wide', ['shift', 'backspace', 'numbers', 'symbols', 'letters', 'enter', 'done', 'paste'].includes(key));
+                    button.classList.toggle('vk-key-wide', ['shift', 'backspace', 'numbers', 'symbols', 'letters', 'enter', 'done'].includes(key));
                     button.classList.toggle('vk-key-space', key === 'space');
                     button.classList.toggle('vk-key-done', key === 'done');
                     button.classList.toggle('vk-key-nav', key === 'left' || key === 'right');
+                    button.classList.toggle('vk-key-paste', key === 'paste');
                     row.appendChild(button);
                 }
                 virtualKeyboardKeys.appendChild(row);
@@ -4081,11 +4099,32 @@
             drawGuides();
         }
 
+        let canvasInsetLeft = 0;
+        let canvasInsetTop = 0;
+
+        function updateCanvasInset() {
+            const toolbarRect = toolbar.getBoundingClientRect();
+            const isMobileToolbar = window.innerWidth <= 560;
+            if (isMobileToolbar) {
+                canvasInsetLeft = 0;
+                canvasInsetTop = Math.max(0, Math.round(toolbarRect.bottom + 20));
+            } else {
+                canvasInsetLeft = Math.max(0, Math.round(toolbarRect.right + 20));
+                canvasInsetTop = 0;
+            }
+            document.documentElement.style.setProperty('--canvas-left', `${canvasInsetLeft}px`);
+            document.documentElement.style.setProperty('--canvas-top', `${canvasInsetTop}px`);
+        }
+
+        const canvasInsetRight = 0;
+
         function cssSize() {
             const viewport = window.visualViewport;
+            const totalWidth = Math.max(1, Math.round(viewport ? viewport.width : window.innerWidth));
+            const totalHeight = Math.max(1, Math.round(viewport ? viewport.height : window.innerHeight));
             return {
-                width: Math.max(1, Math.round(viewport ? viewport.width : window.innerWidth)),
-                height: Math.max(1, Math.round(viewport ? viewport.height : window.innerHeight))
+                width: Math.max(1, totalWidth - canvasInsetLeft - canvasInsetRight),
+                height: Math.max(1, totalHeight - canvasInsetTop)
             };
         }
 
@@ -4164,6 +4203,7 @@
             }
             updateToolbarOverflow();
             updateOrientationOverlay();
+            updateCanvasInset();
             if (isLandscapeBlocked) {
                 return;
             }
@@ -4235,7 +4275,7 @@
         }
 
         function pointFromEvent(event) {
-            return { x: event.clientX, y: event.clientY };
+            return { x: event.clientX - canvasInsetLeft, y: event.clientY - canvasInsetTop };
         }
 
         function normalizeInputMode(mode) {
@@ -5189,7 +5229,7 @@
             const maxTop = viewport.top + viewport.height - menuHeight - edgeGap;
             const preferredLeft = buttonRect.right + edgeGap;
             const fallbackLeft = buttonRect.left - menuWidth - edgeGap;
-            const preferredTop = buttonRect.top;
+            const preferredTop = buttonRect.top + buttonRect.height / 2 - menuHeight / 2;
             const nextLeft = Math.min(
                 Math.max(preferredLeft > maxLeft ? fallbackLeft : preferredLeft, minLeft),
                 Math.max(minLeft, maxLeft)
@@ -8137,6 +8177,7 @@
         });
         if (chatToggle && chatBar) {
         chatToggle.addEventListener('change', () => {
+            const reopenAiMenu = aiMenu.classList.contains('is-open') || document.activeElement === chatToggle;
             if (chatMenuRow) {
             chatMenuRow.classList.toggle('is-active', chatToggle.checked);
             }
@@ -8162,6 +8203,12 @@
                 chatThread.style.bottom = '';
             }
             closeChatSlashMenu();
+            }
+            if (reopenAiMenu && !aiMenu.classList.contains('is-open')) {
+                aiMenu.classList.add('is-open');
+                aiMenu.setAttribute('aria-hidden', 'false');
+                aiBtn.setAttribute('aria-expanded', 'true');
+                aiBtn.classList.add('is-menu-active');
             }
             positionChatThread();
             window.setTimeout(positionChatThread, 200);
@@ -8251,53 +8298,11 @@
                 }
             });
         }
-        const ChatSpeechRecognition = window.SpeechRecognition || window.webkitSpeechRecognition;
-        let chatRecognition = null;
-        let chatDictating = false;
-        function stopChatDictation() {
-            chatDictating = false;
-            chatMicBtn.classList.remove('is-active');
-            if (chatRecognition) {
-                chatRecognition.stop();
-            }
-        }
-        if (chatMicBtn) {
-            if (!ChatSpeechRecognition) {
-                chatMicBtn.disabled = true;
-                chatMicBtn.title = 'Dictation not supported';
-            } else {
-                chatMicBtn.addEventListener('click', () => {
-                    if (chatDictating) {
-                        stopChatDictation();
-                        return;
-                    }
-                    chatRecognition = new ChatSpeechRecognition();
-                    chatRecognition.lang = 'en-US';
-                    chatRecognition.interimResults = false;
-                    chatRecognition.addEventListener('result', (event) => {
-                        const transcript = Array.from(event.results)
-                            .map((result) => result[0].transcript)
-                            .join(' ')
-                            .trim();
-                        if (transcript) {
-                            const current = chatInput.textContent || '';
-                            const updated = current ? `${current} ${transcript}` : transcript;
-                            chatInput.textContent = updated;
-                            if (virtualKeyboardTarget && virtualKeyboardTarget.type === 'chat') {
-                                virtualKeyboardCaret = updated.length;
-                                renderVirtualTextNode(chatInput, updated, true, virtualKeyboardCaret);
-                            }
-                        }
-                    });
-                    chatRecognition.addEventListener('end', () => {
-                        chatDictating = false;
-                        chatMicBtn.classList.remove('is-active');
-                    });
-                    chatDictating = true;
-                    chatMicBtn.classList.add('is-active');
-                    chatRecognition.start();
-                });
-            }
+        function stopChatDictation() {}
+        if (chatCloseBtn) {
+            chatCloseBtn.addEventListener('click', () => {
+                closeChat();
+            });
         }
         function positionChatThread() {
             if (!chatThread || !chatBar) {
@@ -8872,6 +8877,9 @@ return { ok: false, message: (err && err.message) || 'Network error while readin
         document.getElementById('fileSaveBtn').addEventListener('click', runSaveAction);
         document.getElementById('fileSaveAsBtn').addEventListener('click', runSaveAsAction);
         document.getElementById('fileExportBtn').addEventListener('click', runExportAction);
+        document.getElementById('fileHomeBtn').addEventListener('click', () => {
+            window.location.href = window.CANVAS_HOME_URL;
+        });
         document.getElementById('createFolderBtn').addEventListener('click', createFolder);
         textToolBtn.addEventListener('click', startTextSelection);
         document.querySelectorAll('[data-close]').forEach((button) => button.addEventListener('click', closeModals));
@@ -10522,19 +10530,20 @@ return { ok: false, message: (err && err.message) || 'Network error while readin
         }
 
         /* ===== USER PANEL ===== */
-        function accountBarClass(pct) {
-        if (pct === null) return '';
-        if (pct >= 100) return 'is-danger';
-        if (pct >= 80) return 'is-warning';
-        return '';
+        function accountBarColor(pct) {
+        if (pct === null) return 'acct-bar-indigo';
+        if (pct >= 100) return 'acct-bar-red';
+        if (pct >= 80) return 'acct-bar-amber';
+        return 'acct-bar-indigo';
         }
 
         function renderAccountPanel(body, data) {
         const initial = (data.name || '?').trim().charAt(0).toUpperCase() || '?';
-        const planBadgeClass = data.plan.isPremium ? 'account-panel-plan-badge is-premium' : 'account-panel-plan-badge is-free';
+        const isPremium = Boolean(data.plan.isPremium);
         const priceLabel = data.plan.priceAmount > 0
-            ? `${data.plan.priceSymbol}${data.plan.priceAmount.toFixed(2)}/${data.plan.billingInterval || 'month'}`
+            ? `${data.plan.priceSymbol}${data.plan.priceAmount.toFixed(2)}`
             : `${data.plan.priceSymbol}0`;
+        const billingInterval = data.plan.billingInterval;
 
         const usagePct = data.aiUsage.pct;
         const pagesCap = data.canvasPages.cap;
@@ -10546,93 +10555,94 @@ return { ok: false, message: (err && err.message) || 'Network error while readin
             email: escapeHtml(String(data.email || '')),
             memberSince: escapeHtml(String(data.memberSince || '')),
             role: escapeHtml(String(data.role || '')),
-            planName: escapeHtml(String(data.plan.name || 'Free').toUpperCase()),
+            planName: escapeHtml(String(data.plan.name || 'Free')),
             priceLabel: escapeHtml(String(priceLabel)),
+            billingInterval: escapeHtml(String(billingInterval || '')),
             resetsOn: escapeHtml(String(data.aiUsage.resetsOn || '')),
         };
 
         body.innerHTML = `
-            <div class="account-panel">
-            <div class="account-panel-identity">
-                <div class="account-panel-avatar">${initial}</div>
-                <div class="account-panel-identity-info">
-                <div class="account-panel-name">${safeAccount.name}</div>
-                <div class="account-panel-email">${safeAccount.email}</div>
-                <span class="${planBadgeClass}">${safeAccount.planName}</span>
-                </div>
-            </div>
-
-            <div class="account-panel-meta">
-                <div>
-                <div class="account-panel-meta-label">Member since</div>
-                <div class="account-panel-meta-value">${safeAccount.memberSince}</div>
-                </div>
-                <div>
-                <div class="account-panel-meta-label">Role</div>
-                <div class="account-panel-meta-value">${safeAccount.role}</div>
-                </div>
-                <a class="back-home-btn account-panel-meta-btn" style="position:static;" href="${window.CANVAS_HOME_URL}">
-                <svg viewBox="0 0 24 24" aria-hidden="true"><path d="M15 18l-6-6 6-6" stroke="currentColor" stroke-width="2" fill="none" stroke-linecap="round" stroke-linejoin="round"/></svg>
-                <span>Homepage</span>
+            <div class="acct">
+            <div class="acct-signout-row">
+                <a href="${window.CANVAS_HOME_URL}" class="acct-signout-btn">
+                <svg viewBox="0 0 24 24" aria-hidden="true"><path d="M3 11.5 12 4l9 7.5" stroke="currentColor" stroke-width="2" fill="none" stroke-linecap="round" stroke-linejoin="round"/><path d="M5 10v9a1 1 0 0 0 1 1h4v-6h4v6h4a1 1 0 0 0 1-1v-9" stroke="currentColor" stroke-width="2" fill="none" stroke-linecap="round" stroke-linejoin="round"/></svg>
+                Go to homepage
                 </a>
-                <button type="button" class="back-home-btn account-panel-meta-btn account-panel-signout" id="accountPanelSignOutBtn" style="position:static;">
+                <button type="button" class="acct-signout-btn" id="accountPanelSignOutBtn">
                 <svg viewBox="0 0 24 24" aria-hidden="true"><path d="M9 21H5a2 2 0 0 1-2-2V5a2 2 0 0 1 2-2h4" stroke="currentColor" stroke-width="2" fill="none" stroke-linecap="round" stroke-linejoin="round"/><path d="M16 17l5-5-5-5M21 12H9" stroke="currentColor" stroke-width="2" fill="none" stroke-linecap="round" stroke-linejoin="round"/></svg>
-                <span>Sign out</span>
+                Sign out
                 </button>
             </div>
 
-            <div class="account-panel-card">
-                <div class="account-panel-card-header">
-                <span class="account-panel-card-title">Current plan</span>
+            <div class="acct-row acct-row-3">
+                <div class="acct-card acct-col-2">
+                <h3 class="acct-label">Account details</h3>
+                <div class="acct-identity">
+                    <div class="acct-avatar">${initial}</div>
+                    <div>
+                    <div class="acct-name">${safeAccount.name}</div>
+                    <div class="acct-email">${safeAccount.email}</div>
+                    </div>
                 </div>
-                <div class="account-panel-stat-value">${safeAccount.priceLabel}</div>
+                <div class="acct-dl">
+                    <div>
+                    <div class="acct-dt">Member since</div>
+                    <div class="acct-dd">${safeAccount.memberSince}</div>
+                    </div>
+                    <div>
+                    <div class="acct-dt">Role</div>
+                    <div class="acct-dd acct-capitalize">${safeAccount.role}</div>
+                    </div>
+                </div>
+                <div class="acct-actions">
+                    <a href="${window.CANVAS_PROFILE_EDIT_URL}" class="acct-btn acct-btn-indigo">Update Account</a>
+                    <a href="${window.CANVAS_ACCOUNT_URL}" class="acct-btn acct-btn-danger">Delete Account</a>
+                </div>
+                </div>
+
+                <div class="acct-card acct-plan-card">
+                <div class="acct-plan-head">
+                    <h3 class="acct-label">Current plan</h3>
+                    <span class="acct-badge ${isPremium ? 'is-premium' : 'is-free'}">${safeAccount.planName}</span>
+                </div>
+                <p class="acct-price">${safeAccount.priceLabel}${billingInterval ? `<span class="acct-price-interval">/${safeAccount.billingInterval}</span>` : ''}</p>
+                <div class="acct-spacer"></div>
+                ${!isPremium
+                    ? `<button type="button" disabled class="acct-upgrade-btn">Upgrade to Premium (coming soon)</button>`
+                    : `<div class="acct-thankyou">Thank you for being Premium.</div>`}
+                </div>
             </div>
 
-            <div class="account-panel-card">
-                <div class="account-panel-card-header">
-                <span class="account-panel-card-title">AI usage this month</span>
-                <span class="account-panel-note">Resets ${safeAccount.resetsOn}</span>
+            <div class="acct-card">
+                <div class="acct-plan-head" style="margin-bottom:4px;">
+                <h3 class="acct-label">AI usage this month</h3>
+                <span class="acct-note">Resets ${safeAccount.resetsOn}</span>
                 </div>
+                <div style="margin-top:12px;">
                 ${data.aiUsage.unlimited ? `
-                <div class="account-panel-stat-row">
-                <span class="account-panel-stat-value">Unlimited</span>
-                </div>
-                <div class="account-panel-bar-track"><div class="account-panel-bar-fill" style="width:100%;background:#10b981"></div></div>
+                    <div class="acct-stat-row"><span class="acct-stat-value">Unlimited</span></div>
+                    <div class="acct-bar-track"><div class="acct-bar-fill acct-bar-emerald" style="width:100%"></div></div>
                 ` : `
-                <div class="account-panel-stat-row">
-                <span class="account-panel-stat-value">${data.aiUsage.tokensUsed.toLocaleString()}</span>
-                <span class="account-panel-stat-cap">tokens used</span>
-                </div>
-                <div class="account-panel-bar-track"><div class="account-panel-bar-fill ${accountBarClass(usagePct)}" style="width:${usagePct ?? 6}%"></div></div>
+                    <div class="acct-stat-row"><span class="acct-stat-value">${data.aiUsage.tokensUsed.toLocaleString()}</span><span class="acct-stat-cap">tokens used</span></div>
+                    <div class="acct-bar-track"><div class="acct-bar-fill ${accountBarColor(usagePct)}" style="width:${usagePct ?? 6}%"></div></div>
+                    ${usagePct !== null && usagePct >= 80 ? `<p class="acct-warning ${usagePct >= 100 ? 'is-danger' : 'is-warning'}">${usagePct >= 100 ? 'You have reached your monthly usage limit.' : 'You are approaching your monthly usage limit.'}</p>` : ''}
                 `}
+                </div>
             </div>
 
-            <div class="account-panel-card">
-                <div class="account-panel-card-header">
-                <span class="account-panel-card-title">Canvas pages</span>
+            <div class="acct-row acct-row-2">
+                <div class="acct-card">
+                <h3 class="acct-label" style="margin-bottom:12px;">Canvas pages</h3>
+                <div class="acct-stat-row"><span class="acct-stat-value">${data.canvasPages.used}</span><span class="acct-stat-cap">${pagesCap ? 'of ' + pagesCap : 'unlimited'}</span></div>
+                <div class="acct-bar-track"><div class="acct-bar-fill ${accountBarColor(pagesPct)}" style="width:${pagesPct ?? 6}%"></div></div>
                 </div>
-                <div class="account-panel-stat-row">
-                <span class="account-panel-stat-value">${data.canvasPages.used}</span>
-                <span class="account-panel-stat-cap">${pagesCap ? 'of ' + pagesCap : 'unlimited'}</span>
-                </div>
-                <div class="account-panel-bar-track"><div class="account-panel-bar-fill ${accountBarClass(pagesPct)}" style="width:${pagesPct ?? 6}%"></div></div>
-            </div>
 
-            <div class="account-panel-card">
-                <div class="account-panel-card-header">
-                <span class="account-panel-card-title">Imported PDFs</span>
+                <div class="acct-card">
+                <h3 class="acct-label" style="margin-bottom:12px;">Imported PDFs</h3>
+                <div class="acct-stat-row"><span class="acct-stat-value">${data.pdfs.used}</span><span class="acct-stat-cap">${pdfsCap ? 'of ' + pdfsCap : 'unlimited'}</span></div>
+                <div class="acct-bar-track"><div class="acct-bar-fill ${accountBarColor(pdfsPct)}" style="width:${pdfsPct ?? 6}%"></div></div>
+                ${data.pdfs.sizeCapMb ? `<div class="acct-note">Max ${data.pdfs.sizeCapMb}MB per file</div>` : ''}
                 </div>
-                <div class="account-panel-stat-row">
-                <span class="account-panel-stat-value">${data.pdfs.used}</span>
-                <span class="account-panel-stat-cap">${pdfsCap ? 'of ' + pdfsCap : 'unlimited'}</span>
-                </div>
-                <div class="account-panel-bar-track"><div class="account-panel-bar-fill ${accountBarClass(pdfsPct)}" style="width:${pdfsPct ?? 6}%"></div></div>
-                ${data.pdfs.sizeCapMb ? `<div class="account-panel-note">Max ${data.pdfs.sizeCapMb}MB per file</div>` : ''}
-            </div>
-
-            <div class="account-panel-delete-wrap">
-                <a class="account-panel-delete-btn" href="${window.CANVAS_ACCOUNT_URL}">Delete Account</a>
-                <div class="account-panel-delete-caption">This will permanently and irreversibly delete your account.</div>
             </div>
 
             </div>

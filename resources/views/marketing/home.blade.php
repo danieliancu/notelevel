@@ -106,10 +106,12 @@
 
         <div class="hero-buttons">
           @include('marketing.partials.cta-button', ['class' => 'btn btn-primary btn-lg'])
+          @guest
           <a href="{{ route('demo') }}" class="btn btn-outline btn-lg">
             <svg width="16" height="16" viewBox="0 0 24 24" fill="currentColor"><polygon points="6 3 20 12 6 21 6 3"/></svg>
             Try demo
           </a>
+          @endguest
         </div>
         <ul class="mini-features">
           <li>

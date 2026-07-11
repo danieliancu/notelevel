@@ -13,6 +13,7 @@
         window.CANVAS_HOME_URL = "{{ route('home') }}";
         window.CANVAS_ACCOUNT_SUMMARY_URL = "{{ route('account.summary') }}";
         window.CANVAS_ACCOUNT_URL = "{{ route('account') }}";
+        window.CANVAS_PROFILE_EDIT_URL = "{{ route('profile.edit') }}";
         window.CANVAS_LOGOUT_URL = "{{ route('logout') }}";
         window.CANVAS_PDF_EXPORT_ALLOWED = {{ (auth()->check() && auth()->user()->effectivePdfExportAllowed()) ? 'true' : 'false' }};
     </script>
@@ -49,8 +50,8 @@
     </div>
     <div class="chat-thread" id="chatThread" aria-live="polite"></div>
     <div class="chat-bar" id="chatBar" aria-hidden="true">
-        <button class="chat-mic-btn" id="chatMicBtn" type="button" aria-label="Dictate" title="Dictate">
-            <svg viewBox="0 0 24 24" aria-hidden="true"><path d="M12 15a3 3 0 0 0 3-3V6a3 3 0 0 0-6 0v6a3 3 0 0 0 3 3Z"/><path d="M19 11a7 7 0 0 1-14 0"/><path d="M12 18v3"/></svg>
+        <button class="chat-close-btn" id="chatCloseBtn" type="button" aria-label="Close" title="Close">
+            <svg viewBox="0 0 24 24" aria-hidden="true"><path d="M18 6 6 18"/><path d="M6 6l12 12"/></svg>
         </button>
         <div class="chat-input-wrap" id="chatInputWrap">
             <button class="chat-slash-btn" id="chatSlashBtn" type="button" aria-label="Commands" title="Commands" aria-haspopup="true" aria-expanded="false">/</button>
@@ -173,7 +174,7 @@
                 <rect class="dashed-select-box" x="16" y="16" width="32" height="32" rx="3"/>
             </svg>
         </button>
-        <button class="icon-button ai-icon" id="aiBtn" type="button" title="AI" aria-label="AI" aria-expanded="false" aria-controls="aiMenu">
+        <button class="icon-button ai-icon toolbar-trigger" id="aiBtn" type="button" title="AI" aria-label="AI" aria-expanded="false" aria-controls="aiMenu">
             <svg viewBox="0 0 64 64" aria-hidden="true">
                 <path d="M32 6c3.9 14.1 11.9 22.1 26 26-14.1 3.9-22.1 11.9-26 26C28.1 43.9 20.1 35.9 6 32 20.1 28.1 28.1 20.1 32 6Z"/>
                 <path d="M15 0c1.8 6.5 5.5 10.2 12 12-6.5 1.8-10.2 5.5-12 12C13.2 17.5 9.5 13.8 3 12c6.5-1.8 10.2-5.5 12-12Z"/>
@@ -298,6 +299,7 @@
         <button id="fileSaveBtn" type="button"><span>Save</span><kbd>Ctrl+S</kbd></button>
         <button id="fileSaveAsBtn" type="button"><span>Save as</span></button>
         <button id="fileExportBtn" type="button"><span>Export</span></button>
+        <button id="fileHomeBtn" type="button"><span>Homepage</span><img class="file-menu-logo" src="{{ asset('marketing/favicon.svg') }}" alt="" /></button>
     </div>
 
     <div class="toolbar-menu tool-settings-menu" id="penMenu" aria-hidden="true">
