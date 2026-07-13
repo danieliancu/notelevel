@@ -64,7 +64,11 @@ class SecurityHeaders
             "object-src 'none'",
             "base-uri 'self'",
             "frame-ancestors 'none'",
-            "form-action 'self'",
+            // BillingController redirects here after a successful Checkout
+            // Session creation (302 Location: checkout.stripe.com) — Chrome
+            // enforces form-action against that redirect target too, not
+            // just the form's own same-origin action URL.
+            "form-action 'self' https://checkout.stripe.com",
         ]).';';
 
         $response->headers->set('X-Content-Type-Options', 'nosniff');
