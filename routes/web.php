@@ -1,6 +1,7 @@
 <?php
 
 use App\Http\Controllers\AccountController;
+use App\Http\Controllers\BillingController;
 use App\Http\Controllers\BlogController;
 use App\Http\Controllers\CanvasAiController;
 use App\Http\Controllers\CanvasApiController;
@@ -15,6 +16,7 @@ use App\Http\Controllers\PdfController;
 use App\Http\Controllers\PdfFolderController;
 use App\Http\Controllers\ProfileController;
 use App\Http\Controllers\SitemapController;
+use App\Http\Controllers\StripeWebhookController;
 use Illuminate\Support\Facades\Route;
 
 Route::get('/health/ready', [HealthController::class, 'ready'])
@@ -49,6 +51,24 @@ Route::domain(config('domains.marketing'))->group(function () {
     Route::middleware(['noindex'])->group(function () {
         Route::get('/demo', [DemoController::class, 'show'])->name('demo');
         Route::get('/demo/register', [DemoController::class, 'bounceToRegister'])->name('demo.register');
+
+        // No auth: Stripe posts these server-to-server. Authenticity is
+        // verified via the signed Stripe-Signature header, not a session.
+        Route::post('/stripe/webhook', [StripeWebhookController::class, 'handle'])->name('stripe.webhook');
+
+        // No auth required: checkout() supports guest checkout (Stripe
+        // collects the email itself), and success() creates the account
+        // afterward if needed — see StripeCheckoutFulfillment.
+        Route::post('/billing/checkout', [BillingController::class, 'checkout'])->name('billing.checkout');
+        Route::get('/billing/success', [BillingController::class, 'success'])->name('billing.success');
+        Route::get('/billing/cancel', [BillingController::class, 'cancel'])->name('billing.cancel');
+
+        // Signed, time-limited (30 min) one-time login link for accounts
+        // created by guest checkout — see BillingController::success().
+        Route::get('/billing/claim/{user}', [BillingController::class, 'claim'])
+            ->middleware('signed')
+            ->name('billing.claim');
+        Route::post('/billing/claim/{user}', [BillingController::class, 'claimStore'])->name('billing.claim.store');
 
         Route::middleware('auth')->group(function () {
             Route::get('/dashboard', function () {

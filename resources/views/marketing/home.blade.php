@@ -416,7 +416,10 @@
           <h3>Pro</h3>
           <p class="price-desc">AI cleanup, summaries, explanations, export, unlimited notebooks.</p>
           <p class="price"><span class="amount">{{ $premiumPrice['symbol'] }}{{ number_format($premiumPrice['amount'], 2) }}</span><span class="period">/month</span></p>
-          <a href="#start" class="btn btn-primary btn-block">Start Pro</a>
+          <form method="POST" action="{{ route('billing.checkout') }}">
+            @csrf
+            <button type="submit" class="btn btn-primary btn-block">Start Pro</button>
+          </form>
           <ul class="price-features">
             <li>All Free features</li>
             <li>Advanced AI tools</li>

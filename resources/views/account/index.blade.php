@@ -25,6 +25,12 @@
     <div class="py-10">
         <div class="max-w-[800px] mx-auto sm:px-6 lg:px-8 space-y-8">
 
+            @if(session('status'))
+                <div class="rounded-xl bg-indigo-50 border border-indigo-100 text-indigo-700 text-sm font-medium px-4 py-3">
+                    {{ session('status') }}
+                </div>
+            @endif
+
             <div class="flex justify-end">
                 <form method="POST" action="{{ route('logout') }}">
                     @csrf
@@ -95,10 +101,13 @@
                     </p>
                     <div class="mt-4 flex-1"></div>
                     @if(!$isPremium)
-                        <button type="button" disabled
-                            class="w-full inline-flex justify-center items-center px-4 py-2 rounded-lg bg-gray-100 text-gray-400 text-sm font-medium cursor-not-allowed">
-                            Upgrade to Premium (coming soon)
-                        </button>
+                        <form method="POST" action="{{ route('billing.checkout') }}">
+                            @csrf
+                            <button type="submit"
+                                class="w-full inline-flex justify-center items-center px-4 py-2 rounded-lg bg-indigo-600 text-white text-sm font-medium hover:bg-indigo-500 transition">
+                                Upgrade to Premium
+                            </button>
+                        </form>
                     @else
                         <div class="text-xs text-gray-400 text-center">Thank you for being Premium.</div>
                     @endif

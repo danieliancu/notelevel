@@ -33,6 +33,9 @@ class User extends Authenticatable implements FilamentUser
         'max_pdfs_override',
         'ai_monthly_cost_cap_gbp_override',
         'ai_usage_reset_at',
+        'stripe_customer_id',
+        'stripe_subscription_id',
+        'stripe_subscription_status',
     ];
 
     /**

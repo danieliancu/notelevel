@@ -23,6 +23,13 @@ return Application::configure(basePath: dirname(__DIR__))
             'legacy.deprecated' => LegacyApiDeprecation::class,
             'noindex' => NoIndex::class,
         ]);
+
+        // Stripe posts webhook events server-to-server with no session/CSRF
+        // token; authenticity is verified separately via the signed
+        // Stripe-Signature header in StripeWebhookController::handle().
+        $middleware->validateCsrfTokens(except: [
+            'stripe/webhook',
+        ]);
     })
     ->withExceptions(function (Exceptions $exceptions): void {
         $exceptions->report(function (Throwable $exception): void {

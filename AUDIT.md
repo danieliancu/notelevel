@@ -16,7 +16,7 @@ In plus, de facut:
 > **Corecție importantă la P2-1 (marcat ✅ mai sus):** afirmația "API-ul legacy... successor link" lasă impresia că migrarea către noul flux e completă. **Nu este.** `resources/js/canvas.js` — codul care rulează efectiv în UI — nu apelează niciodată ruta nouă `documents/{document}/autosave`; fluxul real de salvare al canvasului folosește exclusiv `POST /canvas/api` (acțiunea `save`, marcată `legacy.deprecated`). Toată protecția la conflict de versiune și idempotency construită și testată în `tests/Feature/P2AutosaveTest.php` pentru ruta nouă **nu apără niciun utilizator real** — e cod mort din perspectiva UI-ului. Migrarea reală a fluxului de salvare a fost pornită azi (vezi secțiunea "Migrare autosave — status pe etape" de mai jos). **Recomandare**: orice alt ✅ din acest document ar trebui re-verificat printr-un test manual/automat al fluxului UI real, nu doar prin citirea codului backend izolat.
 >
 > **Descoperiri noi, neacoperite de auditul din 10 iulie:**
-> - **Nu există procesare de plăți** — schema `Plan` are `price_cents`/planuri "premium", dar nicio integrare Stripe/altă platformă, niciun controller de billing, niciun webhook. Dacă planurile plătite fac parte din propunerea de lansare, funcționalitatea de bază lipsește complet.
+> - ~~Nu există procesare de plăți~~ **Rezolvat 13 iulie 2026** — vezi secțiunea 12, "Integrare Stripe", de la finalul documentului.
 > - **Nicio configurație de deploy/CI** — fără `Dockerfile`/`docker-compose`/`Procfile`, fără `.github/workflows`, README încă boilerplate Laravel generic.
 > - **Niciun backup configurat** — nici pachet (`spatie/laravel-backup`), nici `SoftDeletes` pe modelele cu conținut utilizator, deși politica de confidențialitate promite "backup-uri pe termen scurt".
 > - **`APP_DEBUG=true` + `APP_ENV=local`** în `.env`-ul curent — de verificat explicit înainte de orice deploy real.
@@ -573,3 +573,41 @@ Detalii complete ale planului (inclusiv întrebările deschise de produs/design 
 - **Ce rămâne, deliberat, pentru mai târziu** (nu parte din "curățenie", ci decizii separate de operare): dashboard/alertare reală pe aceste loguri (azi sunt doar scrise în `storage/logs/laravel.log`, fără agregare), și decizia de ștergere a codului legacy după o perioadă de observare.
 
 **Fix separat, azi**: cursorul care nu clipea la focus pe inputul gol din chat-ul AI — `resources/css/canvas.css`, regula `.chat-input:empty { caret-color: transparent; }` ascundea cursorul necondiționat, inclusiv când inputul era focusat. Corectat la `.chat-input:empty:not(:focus)`, ca placeholder-ul să rămână fără cursor doar când inputul NU e focusat.
+
+**Fix separat, azi**: meniul dropdown „AI" (`ai-menu`) rămânea deschis (`is-open`) după ce utilizatorul comuta switch-ul „Chat" din interiorul lui — codul îl redeschidea deliberat. Înlocuit cu `closeToolbarMenus()`, ca meniul să se închidă normal, la fel ca restul meniurilor din toolbar.
+
+**Fix separat, azi**: header-ul de pe site-ul de marketing (`.site-header`) se lipea de marginile ecranului sub 900px lățime — o regulă `.header-inner { padding-inline: 0; }` din `resources/css/marketing.css` anula explicit padding-ul moștenit din `.container`. Eliminată; header-ul păstrează acum padding-ul standard (32px tabletă, 20px mobil) la orice lățime.
+
+## 12. Integrare Stripe (13 iulie 2026)
+
+**Context**: planul Premium exista doar ca date (`Plan::price_cents`), fără nicio cale reală de plată. Userul a creat produsul în Stripe (mod **Live**, decontare în RON, preț de bază 6.99 GBP → 35 RON) și a cerut integrarea completă.
+
+**Ce s-a construit:**
+- Pachet `stripe/stripe-php` (`^20.3`) adăugat în `composer.json`.
+- `config/services.php` → intrare `stripe` (`key`, `secret`, `webhook_secret`, `premium_price_id`), citite din `.env` (`STRIPE_KEY`, `STRIPE_SECRET`, `STRIPE_WEBHOOK_SECRET`, `STRIPE_PREMIUM_PRICE_ID`).
+- Migrare nouă: `users` capătă `stripe_customer_id`, `stripe_subscription_id`, `stripe_subscription_status`.
+- `app/Http/Controllers/BillingController.php` — `checkout()` creează (sau reutilizează) un Customer Stripe pentru user, apoi o Checkout Session în mod `subscription` pentru `STRIPE_PREMIUM_PRICE_ID`, și redirecționează către pagina de plată găzduită de Stripe. `success()`/`cancel()` doar redirecționează înapoi spre `/account` cu un mesaj — **planul se activează exclusiv din webhook**, niciodată din redirect-ul de succes (Stripe poate livra webhook-ul înainte sau după redirect).
+- `app/Http/Controllers/StripeWebhookController.php` — verifică semnătura (`Stripe-Signature` + `STRIPE_WEBHOOK_SECRET`), respinge cu `400` orice payload nesemnat corect. Tratează: `checkout.session.completed` (activează planul Premium + salvează `customer`/`subscription` id-uri), `customer.subscription.updated` (sincronizează statusul, retrogradează la Free dacă statusul devine `canceled`/`unpaid`/`incomplete_expired`), `customer.subscription.deleted` (retrogradează la Free). Toate evenimentele se loghează (`stripe.subscription_activated`/`_downgraded`, `stripe.webhook_signature_invalid`, etc.).
+- Rute noi în `routes/web.php`: `POST /billing/checkout`, `GET /billing/success`, `GET /billing/cancel` (toate `auth`), `POST /stripe/webhook` (fără `auth` — Stripe apelează server-to-server; autenticitatea vine din semnătură, nu din sesiune). CSRF exceptat explicit pentru `stripe/webhook` în `bootstrap/app.php`.
+- Butonul „Upgrade to Premium (coming soon)" din `resources/views/account/index.blade.php` e acum funcțional (POST către `billing.checkout`); adăugat și un banner pentru mesajele flash de status.
+- Teste noi (`tests/Feature/StripeWebhookTest.php`): activare plan la `checkout.session.completed` (cu semnătură HMAC generată real, ca în producție), retrogradare la `customer.subscription.deleted`, respingere cu `400` la semnătură invalidă. Suită completă: **63 teste, 209 assertions**, verde.
+
+**Ce NU am testat automat, deliberat**: `BillingController::checkout()` nu are test automat — ar apela API-ul **live** real al Stripe (creează un Customer + o Checkout Session reale în contul live), ceea ce nu e potrivit pentru o suită de teste rulată des. Verificat doar logica de business (webhook) cu chei/semnături simulate.
+
+**Ce rămâne de făcut, cu userul:**
+1. **Webhook secret** — încă nu există. Trebuie creat un endpoint în Stripe (Developers → Webhooks → Add endpoint), URL = domeniul public real + `/stripe/webhook`, evenimente: `checkout.session.completed`, `customer.subscription.updated`, `customer.subscription.deleted`. Stripe generează atunci un `whsec_...` de pus în `.env` ca `STRIPE_WEBHOOK_SECRET`.
+2. **Testare end-to-end** — deoarece cheile sunt Live, orice checkout complet va taxa real 35 RON. De discutat cu userul cum vrea să verifice fluxul complet (card real + rambursare manuală ulterioară, sau expunere temporară a mediului local printr-un tunel public ca Stripe să poată livra webhook-ul către acest dev environment).
+3. Fără portal de gestionare a abonamentului (anulare/schimbare card) — userul ar trebui direcționat către Stripe Customer Portal pentru asta, neconstruit încă.
+
+**Extindere — checkout pentru vizitatori neautentificați (13 iulie 2026):**
+
+Butonul „Start Pro" de pe pagina principală (`resources/views/marketing/home.blade.php`) ducea către o ancoră moartă (`#start`). Cerință: să ducă direct la plată, inclusiv pentru vizitatori fără cont — Stripe le cere emailul la checkout, contul se creează abia după plată.
+
+- **`app/Services/StripeCheckoutFulfillment.php`** (serviciu nou, comun): găsește userul după `client_reference_id` (checkout autentificat) sau după email (checkout ca vizitator) — dacă nu există cont cu acel email, îl creează (parolă aleatoare, hash-uită, `email_verified_at` setat, considerat verificat fiindcă a plătit real). Activează planul Premium și salvează datele Stripe. Folosit identic din webhook **și** din pagina de succes (idempotent — sigur de apelat de două ori pentru aceeași sesiune).
+- **`BillingController::checkout()`**: pentru vizitatori, omite `customer`/`client_reference_id` din sesiunea Stripe — Stripe îi arată propriul câmp de email la checkout.
+- **`BillingController::success()`**: preia sesiunea de la Stripe (API, folosind `session_id` din URL), rulează `fulfill()`. Dacă a rezultat un **cont nou**, generează un link semnat (`URL::temporarySignedRoute`, expiră în 30 min) și redirecționează acolo — user-ul e logat automat și i se cere să-și seteze parola. Dacă emailul aparținea deja unui cont existent, **nu îl loghează automat** (risc de securitate — cineva ar putea folosi linkul de succes ca să intre pe alt cont) — îi cere să se autentifice normal; planul i s-a activat oricum, din webhook.
+- **`GET/POST /billing/claim/{user}`** — rută nouă, `GET` protejată de middleware-ul `signed` (Laravel respinge automat linkuri expirate/modificate cu `403`, verificat prin test). `POST` verifică explicit că userul autentificat e chiar cel din link, altfel `403` (nu poți folosi propriul link de claim ca să preiei contul altcuiva).
+- Buton „Start Pro" acum funcțional pentru oricine, autentificat sau nu.
+- Teste noi: `StripeCheckoutFulfillmentTest` (cont nou, cont existent găsit după email fără duplicare, `client_reference_id`, eroare când nu poate identifica userul), `BillingClaimTest` (link valid loghează și arată formularul, link expirat/modificat respins cu `403`, setarea parolei prin flux, un user nu poate revendica link-ul altui user). Suită completă: **72 teste, 231 assertions**, verde.
+- **Notă de securitate importantă, deliberată**: distincția "cont nou vs. cont existent" e esențială — fără ea, oricine ar afla un `session_id` de checkout finalizat (din istoricul browserului, logs, etc.) ar putea folosi pagina de succes ca să se autologheze pe alt cont. Auto-login se întâmplă *doar* pentru conturi create chiar în acea cerere.
+- **Ce nu am testat automat, deliberat**: apelurile reale către Stripe API (`checkout->sessions->create()`/`retrieve()`) din `checkout()`/`success()` — ar folosi cheile **live** reale. Testat riguros doar logica de business din jurul lor (`fulfill()`, fluxul de claim).

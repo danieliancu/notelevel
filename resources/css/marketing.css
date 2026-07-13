@@ -210,7 +210,6 @@ button { font: inherit; cursor: pointer; border: none; background: none; color: 
   .header-actions .link-action,
   .header-actions .btn { display: none; }
   .menu-toggle { display: inline-flex; }
-  .header-inner { padding-inline: 0; }
 }
 
 /* ============ Hero ============ */
