@@ -401,7 +401,9 @@
         <aside class="pricing-cta">
           <h3>Your notebook should do more than store pages.</h3>
           <p>Write freely. Think visually. Let AI make it clearer.</p>
-          @include('marketing.partials.cta-button', ['class' => 'btn btn-primary'])
+          @unless($isPremium)
+            @include('marketing.partials.cta-button', ['class' => 'btn btn-primary'])
+          @endunless
           <ul class="price-features">
             <li>No credit card required.</li>
             <li>Limited pages</li>
@@ -412,14 +414,15 @@
         </aside>
 
         <article class="price-card highlighted">
-          <span class="popular-badge">Most popular</span>
           <h3>Pro</h3>
           <p class="price-desc">AI cleanup, summaries, explanations, export, unlimited notebooks.</p>
           <p class="price"><span class="amount">{{ $premiumPrice['symbol'] }}{{ number_format($premiumPrice['amount'], 2) }}</span><span class="period">/month</span></p>
-          <form method="POST" action="{{ route('billing.checkout') }}">
-            @csrf
-            <button type="submit" class="btn btn-primary btn-block">Start Pro</button>
-          </form>
+          @unless($isPremium)
+            <form method="POST" action="{{ route('billing.checkout') }}">
+              @csrf
+              <button type="submit" class="btn btn-primary btn-block">Premium</button>
+            </form>
+          @endunless
           <ul class="price-features">
             <li>All Free features</li>
             <li>Advanced AI tools</li>
@@ -434,7 +437,7 @@
           <h3>Teams / Schools</h3>
           <p class="price-desc">For classrooms, tutoring and shared workspaces.</p>
           <p class="price"><span class="amount amount-custom">Custom pricing</span></p>
-          <a href="#contact" class="btn btn-outline btn-block">Contact us</a>
+          <button type="button" class="btn btn-outline btn-block" disabled title="Coming soon">Contact us</button>
           <ul class="price-features">
             <li>Everything in Pro</li>
             <li>Team folders</li>

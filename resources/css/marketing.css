@@ -106,6 +106,12 @@ button { font: inherit; cursor: pointer; border: none; background: none; color: 
 }
 .btn-outline:hover { border-color: var(--color-accent); color: var(--color-accent); }
 
+.btn:disabled {
+  cursor: not-allowed;
+  opacity: 0.55;
+}
+.btn-outline:disabled:hover { border-color: var(--color-border); color: var(--color-text-primary); }
+
 .btn-sm { padding: 9px 18px; font-size: 14px; }
 .btn-lg { padding: 14px 26px; font-size: 16px; }
 .btn-block { width: 100%; }
@@ -961,18 +967,6 @@ button { font: inherit; cursor: pointer; border: none; background: none; color: 
   border-color: var(--color-accent);
   box-shadow: var(--shadow-card);
 }
-.popular-badge {
-  position: absolute;
-  top: -12px;
-  right: 24px;
-  background: var(--color-accent);
-  color: #fff;
-  font-size: 11px;
-  font-weight: 700;
-  padding: 4px 10px;
-  border-radius: 999px;
-}
-
 .pricing-cta {
   background: var(--color-text-primary);
   color: #fff;

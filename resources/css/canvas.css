@@ -4698,17 +4698,57 @@ color: #0f766e;
   padding: 8px 16px;
   border: 0;
   border-radius: 8px;
-  background: #f3f4f6;
-  color: #9ca3af;
+  background: #4338ca;
+  color: #ffffff;
   font-size: 14px;
   font-weight: 500;
-  cursor: not-allowed;
+  cursor: pointer;
+}
+
+.acct-upgrade-btn:hover {
+  background: #3730a3;
 }
 
 .acct-thankyou {
   font-size: 12px;
   color: #9ca3af;
   text-align: center;
+}
+
+.acct-delete-input {
+  width: 100%;
+  padding: 8px 12px;
+  border: 1px solid #d1d5db;
+  border-radius: 8px;
+  font-size: 14px;
+  box-sizing: border-box;
+}
+
+.acct-delete-error {
+  margin: 8px 0 0;
+  font-size: 12px;
+  color: #dc2626;
+}
+
+.canvas-status-toast {
+  position: fixed;
+  left: 50%;
+  bottom: 24px;
+  transform: translate(-50%, 16px);
+  background: #111827;
+  color: #ffffff;
+  padding: 10px 20px;
+  border-radius: 8px;
+  font-size: 14px;
+  box-shadow: 0 4px 12px rgba(0, 0, 0, 0.15);
+  opacity: 0;
+  transition: opacity 0.3s ease, transform 0.3s ease;
+  z-index: 1000;
+}
+
+.canvas-status-toast.is-visible {
+  opacity: 1;
+  transform: translate(-50%, 0);
 }
 
 .acct-note {

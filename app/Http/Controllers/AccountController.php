@@ -11,16 +11,6 @@ use Illuminate\Support\Facades\DB;
 
 class AccountController extends Controller
 {
-    public function index(Request $request, CurrencyResolver $currency)
-    {
-        $data = $this->summaryData();
-        $user = $data['user'];
-        $currencyCode = $currency->resolveCurrencyCode($request);
-        $data['planPrice'] = $currency->convert($user->plan?->price_cents ?? 0, $currencyCode);
-
-        return view('account.index', $data);
-    }
-
     public function summary(Request $request, CurrencyResolver $currency)
     {
         $data = $this->summaryData();

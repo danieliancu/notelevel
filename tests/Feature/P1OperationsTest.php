@@ -24,14 +24,15 @@ class P1OperationsTest extends TestCase
             ->assertHeader('X-Request-ID');
     }
 
-    public function test_legal_pages_describe_ai_and_paused_email_features(): void
+    public function test_legal_pages_describe_ai_and_paused_password_recovery(): void
     {
         $this->seed(PlanSeeder::class);
 
         $this->get('/privacy')
             ->assertOk()
             ->assertSee('AI provider')
-            ->assertSee('password recovery are temporarily disabled');
+            ->assertSee('Password recovery is temporarily disabled')
+            ->assertDontSee('Email verification');
 
         $this->get('/cookies')
             ->assertOk()

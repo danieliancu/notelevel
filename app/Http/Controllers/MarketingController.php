@@ -16,6 +16,7 @@ class MarketingController extends Controller
 
         return view('marketing.home', [
             'premiumPrice' => $premiumPrice,
+            'isPremium' => auth()->check() && auth()->user()->plan?->name === 'premium',
         ]);
     }
 }

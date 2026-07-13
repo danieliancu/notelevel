@@ -424,7 +424,7 @@ Aceste elemente nu sunt prezentate automat ca vulnerabilități:
 1. ✅ Mutațiile prin GET din `/canvas/api` au fost eliminate; GET are allowlist read-only și teste de regresie.
 2. ✅ Cerința proiectului și lockfile-ul au fost aliniate la PHP `^8.3`; platform check trece pe PHP 8.3.29.
 3. ✅ Bootstrap-ul bazei de test a fost reparat; suita completă este verde.
-4. ⏸️ **Pauză temporară aprobată:** verificarea emailului nu este obligatorie, nu se trimit emailuri, iar recuperarea parolei este indisponibilă. Rutele aferente sunt eliminate și comportamentul este testat. Acest gate trebuie reactivat înainte de lansarea publică.
+4. ✅ **Reactivat 13 iulie 2026** (vezi secțiunea 13, "Verificare email prin Resend") — verificarea emailului este din nou obligatorie pentru `/dashboard`, cu emailuri reale trimise prin Resend. Recuperarea parolei **rămâne** indisponibilă (nu era parte din cererea curentă) — rutele `password.*` continuă să fie eliminate și testate ca atare.
 5. ✅ Scrierile și ștergerile DB–filesystem sunt fail-fast și compensate; rollback-ul DB și restaurarea fișierelor sunt testate.
 
 ### P1 — înainte de producție
@@ -620,3 +620,48 @@ Butonul „Start Pro" de pe pagina principală (`resources/views/marketing/home.
 - `BillingController::checkout()` calculează moneda cu **exact aceeași logică** (`CurrencyResolver::resolveCurrencyCode()`) folosită la afișarea prețului pe site, o trimite explicit către Stripe (`currency` la nivel de sesiune) și dezactivează Adaptive Pricing per-sesiune (`adaptive_pricing.enabled = false`) — Stripe nu mai negociază/arată switch, arată direct moneda pe care a văzut-o deja vizitatorul.
 - **Verificat printr-un apel real către API-ul Stripe** (o sesiune de checkout creată direct, cu `currency=eur`): răspunsul a confirmat `currency: eur`, `amount_total: 818` — exact cifra așteptată. Sesiunea de test a rămas neatinsă (nimeni nu introduce card), expiră automat.
 - Nu am automatizat un test pentru asta în suită, din același motiv ca restul apelurilor Stripe live — ar crea sesiuni reale la fiecare rulare de teste.
+
+## 13. Verificare email prin Resend, curățare pagină /account, ajustări pricing (13 iulie 2026)
+
+### Verificare email reactivată (reversează P0-4 de mai sus)
+
+**Context**: verificarea emailului fusese pauzată deliberat (vezi P0-4, secțiunea 8). Userul a cerut reactivarea ei folosind Resend ca provider SMTP, cu domeniul propriu `notelevel.com`.
+
+- Pachet `resend/resend-php` (`^1.5`) adăugat în `composer.json`; `.env` setat cu `MAIL_MAILER=resend`, `RESEND_API_KEY`, `MAIL_FROM_ADDRESS=noreply@notelevel.com` (curățate și liniile `MAIL_*` duplicate/conflictuale rămase din configurarea inițială pe `log`).
+- Domeniul `notelevel.com` verificat în Resend prin înregistrări DNS (DKIM/SPF/MX de bounce) puse pe subdomeniul `send.notelevel.com`, în cPanel-ul unde sunt găzduite nameserverele reale ale domeniului (nu în Forge, care nu gestionează DNS-ul acestui domeniu) — confirmat explicit de user ca verificat.
+- `App\Models\User` implementează acum `Illuminate\Contracts\Auth\MustVerifyEmail`.
+- `routes/auth.php` — rutele `verification.notice`, `verification.verify`, `verification.send` sunt readăugate (view-ul `verify-email.blade.php` existent din scaffold Breeze nu fusese șters, doar de-rutat).
+- `RegisteredUserController::store()` declanșează acum `event(new Registered($user))`.
+- **Detaliu important, ne-evident**: Laravel 11+/12 fără `EventServiceProvider` nu descoperă automat listener-ul implicit `Illuminate\Auth\Listeners\SendEmailVerificationNotification` decât dacă e plasat în `app/Listeners`. A fost înregistrat explicit în `AppServiceProvider::boot()` (`Event::listen(Registered::class, SendEmailVerificationNotification::class)`) — altfel evenimentul se declanșa dar niciun email nu pleca, silențios.
+- `/dashboard` (`routes/web.php`) cere acum middleware `['auth', 'verified']`, nu doar `auth`.
+- **Verificat că nu rupe fluxul de guest checkout Stripe**: `StripeCheckoutFulfillment::fulfill()` seta deja `email_verified_at => now()` la crearea contului (considerat verificat fiindcă a plătit real, vezi secțiunea 12) — nemodificat, deci acei useri nu sunt blocați de noul middleware `verified`.
+- `LegalController` — textele din `/privacy` și `/terms` afirmau explicit "Email verification... are temporarily disabled"; corectate să menționeze doar recuperarea parolei ca indisponibilă (verificarea email nu mai e adevărat dezactivată).
+- Teste: `PausedEmailFeaturesTest` rescris (verifică acum trimiterea emailului de verificare via `Notification::fake()`, blocarea `/dashboard` până la verificare, și confirmă că password reset rămâne dezactivat). `P1OperationsTest` actualizat la noul text legal.
+- **Notă operațională, mediu local XAMPP**: instalarea `resend/resend-php` a eșuat inițial — `composer` din PATH rula cu PHP 8.2.24 (`Program Files\php-8.2.24`), nu cu PHP 8.3.32 din `C:\xampp\php` (cerut de `filament/actions`/`openspout`, cazul general deja documentat la DEP-01). Rulat explicit cu binarul din XAMPP. A mai fost nevoie să se activeze extensiile `intl` și `zip` (comentate implicit) în `C:\xampp\php\php.ini`. **Detaliu ne-evident**: Apache (`mod_php`) încarcă `php.ini` o singură dată la pornire — activarea extensiilor nu a avut efect până la un restart explicit al Apache (oprire forțată a proceselor `httpd.exe` + repornire), altfel `/admin/profit-margins` (Filament, folosește `Number::currency()`) continua să dea 500 cu extensiile deja "activate" pe disc.
+
+### Butonul „Upgrade to Premium" din modalul de cont (canvas) devine funcțional
+
+Separat de butonul de pe pagina de marketing (deja funcțional din integrarea Stripe, secțiunea 12) și de cel din fosta pagină `/account` (ștearsă, vezi mai jos) — modalul de cont din interiorul aplicației canvas (`resources/js/canvas.js`, panoul deschis din `openUserPanel()`/`renderAccountPanel()`) avea propriul buton, `<button disabled>Upgrade to Premium (coming soon)</button>`, niciodată conectat la fluxul Stripe.
+
+- Buton activat, wired la un submit de `<form>` dinamic către `billing.checkout` (același pattern folosit deja de butonul de sign-out — creare `<form>` cu `_token` hidden, `form.submit()`), URL injectat prin `window.CANVAS_BILLING_CHECKOUT_URL` în `canvas/show.blade.php`.
+- Stil CSS (`acct-upgrade-btn`) schimbat din gri/`cursor:not-allowed` în indigo activ, consistent cu badge-ul `is-premium`.
+
+### Eliminare completă a paginii /account (la cererea explicită a userului)
+
+**Context**: modalul de cont din canvas conținea deja toate informațiile de pe pagina separată `/account` (nume, email, plan, uz AI, cote) — userul a cerut eliminarea completă a paginii, cu tot ce depindea de ea mutat în modal.
+
+- Șterse: ruta `GET /account`, `AccountController::index()`, view-ul `resources/views/account/index.blade.php`. Rămâne doar `account.summary` (JSON, consumat de modal).
+- Linkurile „Account" din `layouts/navigation.blade.php` (dropdown desktop + meniu responsive) eliminate — pagina țintă nu mai există.
+- **Ștergere cont** (fostă acțiune pe pagina `/account`, cu modal Alpine separat) mutată inline în modalul canvas: click pe „Delete Account" randează un formular de confirmare cu parolă direct în panou (`renderAccountDeleteConfirm()`), trimis prin `fetch DELETE` către `profile.destroy` cu `Accept: application/json`. Eroare de parolă greșită afișată inline, fără reload; succes → `window.location.href` spre homepage. **Nicio schimbare necesară în `ProfileController::destroy()`** — validarea eșuată răspunde deja JSON corect (`{errors:{password:[...]}}`) când requestul cere `Accept: application/json`, indiferent de error bag (`userDeletion`) folosit pentru varianta Blade/sesiune; iar `fetch` urmează transparent redirectul `Redirect::to('/')` de pe calea de succes.
+- **Redirect-urile de status post-checkout Stripe** (`BillingController` — "Payment received", "Checkout cancelled", "already Premium" etc., anterior spre `route('account')`) redirecționează acum spre `route('dashboard')`. Mesajul de status (`session('status')`) e citit în `canvas/show.blade.php` prin `window.CANVAS_STATUS_MESSAGE` și afișat ca toast temporar (6s, `.canvas-status-toast`) — nu exista niciun mecanism de toast în `canvas.js`, a fost adăugat minimal, fără dependențe noi.
+- Teste actualizate: `BillingClaimTest` (assertRedirect spre `dashboard` în loc de `account`).
+
+### Ajustări pagină de prețuri (marketing)
+
+- Badge-ul „Most popular" de pe cardul Pro eliminat (Blade + regula CSS `.popular-badge`, orfană după eliminare).
+- `MarketingController::home()` trimite acum `isPremium` (`auth()->check() && auth()->user()->plan?->name === 'premium'`). Butoanele de pe cardurile Free ("Start writing free"/link spre notebook) și Pro ("Premium", submit către checkout) sunt înfășurate în `@unless($isPremium)` — dispar quand userul autentificat e deja Premium.
+- „Contact us" (cardul Teams/Schools) — era `<a href="#contact">`, dar secțiunea `#contact` nu există nicăieri pe pagină (link mort). Userul a confirmat că feature-ul e "încă în construcție". Schimbat în `<button disabled title="Coming soon">`, cu stil vizual dezactivat (`opacity:0.55`, `cursor:not-allowed`, adăugat generic pe `.btn:disabled` în `marketing.css`) — rămâne vizibil, dar clar non-funcțional, indiferent de planul userului.
+
+### Verificare
+
+Suita completă de teste PHP a rulat verde după fiecare grupă de schimbări din această secțiune (**72 teste, 234 assertions** la final, fără regresii). `npm run build` (Vite) rulat de fiecare dată după modificări în `canvas.js`/`canvas.css`/`marketing.css` pentru ca schimbările să ajungă în bundle-ul servit prin XAMPP. Fluxurile de UI (buton upgrade din modal, ștergere cont inline, toast de status, badge/butoane dispărute la pricing) **nu au fost verificate manual în browser** în cadrul acestei sesiuni — rămâne recomandarea generală deja făcută în document (secțiunea "Limitări") de validare dinamică reală înainte de producție.

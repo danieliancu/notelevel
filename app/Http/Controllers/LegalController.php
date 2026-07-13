@@ -20,7 +20,7 @@ class LegalController extends Controller
                 'Service providers may process data for hosting, storage, infrastructure, error monitoring and AI processing. Some providers may process data outside your country. We use appropriate contractual and organisational safeguards where required and do not sell personal data.',
                 'Account content is retained while the account is active. Deleting the account initiates deletion of tenant records and stored files, subject to short-lived backups, security records and information that must be retained by law. Demo accounts are temporary and are periodically removed.',
                 'Depending on your location, you may have rights to access, correct, delete, restrict or object to processing, receive a portable copy, withdraw consent and complain to a supervisory authority. We may need to verify your identity before fulfilling a request.',
-                'Email verification and password recovery are temporarily disabled. Email addresses are still required as account identifiers but are not currently confirmed as belonging to the registrant. We will update this notice when those services are enabled.',
+                'Password recovery is temporarily disabled. Email addresses are confirmed via a verification link sent at registration, but a forgotten password currently cannot be reset through the service. We will update this notice when password recovery is enabled.',
                 'We use reasonable technical and organisational safeguards, but no online system is risk-free. We will update this notice when processing materially changes and will publish the revised date on this page.',
             ],
         ]);
@@ -34,7 +34,7 @@ class LegalController extends Controller
             'updatedAt' => 'July 10, 2026',
             'paragraphs' => [
                 'These Terms of Service govern your access to and use of Notelevel. By creating an account or using the product, you agree to these terms. If you do not agree with them, please do not use the service.',
-                'You must provide accurate registration information, protect your password and notify us if you believe the account has been compromised. Email verification and password recovery are temporarily unavailable, so a forgotten password may make the account inaccessible.',
+                'You must provide accurate registration information, protect your password and notify us if you believe the account has been compromised. Password recovery is temporarily unavailable, so a forgotten password may make the account inaccessible.',
                 'You retain ownership of your content and grant Notelevel the limited rights required to host, process, back up, transform and transmit it solely to provide features you request, including AI processing. You confirm that you have the rights needed to upload and process that content.',
                 'You must not use the service unlawfully, infringe others\' rights, upload malicious material, attempt unauthorised access, evade quotas, automate abusive requests or disrupt the service. We may restrict or terminate access needed to protect users and infrastructure.',
                 'Plans, limits and available features may change. AI output can be inaccurate and must not be treated as professional, legal, medical or financial advice. You are responsible for reviewing output before relying on or sharing it.',

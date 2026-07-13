@@ -70,14 +70,13 @@ Route::domain(config('domains.marketing'))->group(function () {
             ->name('billing.claim');
         Route::post('/billing/claim/{user}', [BillingController::class, 'claimStore'])->name('billing.claim.store');
 
-        Route::middleware('auth')->group(function () {
+        Route::middleware(['auth', 'verified'])->group(function () {
             Route::get('/dashboard', function () {
                 return view('canvas.show', ['isDemo' => false]);
             })->name('dashboard');
         });
 
         Route::middleware('auth')->group(function () {
-            Route::get('/account', [AccountController::class, 'index'])->name('account');
             Route::get('/account/summary', [AccountController::class, 'summary'])->name('account.summary');
 
             Route::get('/profile', [ProfileController::class, 'edit'])->name('profile.edit');

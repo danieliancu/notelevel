@@ -48,7 +48,7 @@ class BillingClaimTest extends TestCase
         $this->post(route('billing.claim.store', ['user' => $user->id]), [
             'password' => 'a-strong-new-password',
             'password_confirmation' => 'a-strong-new-password',
-        ])->assertRedirect(route('account'));
+        ])->assertRedirect(route('dashboard'));
 
         $this->assertTrue(\Illuminate\Support\Facades\Hash::check('a-strong-new-password', $user->fresh()->password));
     }

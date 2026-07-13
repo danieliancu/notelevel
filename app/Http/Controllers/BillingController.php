@@ -42,7 +42,7 @@ class BillingController extends Controller
 
         if ($user) {
             if ($user->plan?->name === 'premium' && $user->stripe_subscription_status === 'active') {
-                return redirect()->route('account')->with('status', 'You already have an active Premium subscription.');
+                return redirect()->route('dashboard')->with('status', 'You already have an active Premium subscription.');
             }
 
             $customerId = $user->stripe_customer_id;
@@ -73,20 +73,20 @@ class BillingController extends Controller
     {
         $sessionId = (string) $request->query('session_id', '');
         if ($sessionId === '') {
-            return redirect()->route('account')->with('status', 'Payment received. Your plan will update within a few seconds.');
+            return redirect()->route('dashboard')->with('status', 'Payment received. Your plan will update within a few seconds.');
         }
 
         $stripe = new StripeClient(config('services.stripe.secret'));
         $session = $stripe->checkout->sessions->retrieve($sessionId, ['expand' => ['customer']]);
 
         if ($session->payment_status !== 'paid' && $session->status !== 'complete') {
-            return redirect()->route('account')->with('status', 'Payment is still processing. Your plan will update once it completes.');
+            return redirect()->route('dashboard')->with('status', 'Payment is still processing. Your plan will update once it completes.');
         }
 
         try {
             $result = $fulfillment->fulfill($session);
         } catch (\RuntimeException) {
-            return redirect()->route('account')->with('status', 'Payment received, but we could not identify your account. Contact support if your plan does not update.');
+            return redirect()->route('dashboard')->with('status', 'Payment received, but we could not identify your account. Contact support if your plan does not update.');
         }
 
         if (! $result['isNewAccount']) {
@@ -94,7 +94,7 @@ class BillingController extends Controller
             // link — only brand-new accounts created by this exact checkout
             // get the one-time claim link below.
             if (Auth::check() && Auth::id() === $result['user']->id) {
-                return redirect()->route('account')->with('status', 'Payment received — your plan is now Premium.');
+                return redirect()->route('dashboard')->with('status', 'Payment received — your plan is now Premium.');
             }
 
             return redirect()->route('login')->with('status', 'Payment received. Log in to see your upgraded plan.');
@@ -107,7 +107,7 @@ class BillingController extends Controller
 
     public function cancel(): RedirectResponse
     {
-        return redirect()->route('account')->with('status', 'Checkout cancelled — no charge was made.');
+        return redirect()->route('dashboard')->with('status', 'Checkout cancelled — no charge was made.');
     }
 
     public function claim(Request $request, User $user): View
@@ -127,6 +127,6 @@ class BillingController extends Controller
 
         $user->update(['password' => bcrypt($request->string('password'))]);
 
-        return redirect()->route('account')->with('status', 'Welcome! Your password is set and your plan is Premium.');
+        return redirect()->route('dashboard')->with('status', 'Welcome! Your password is set and your plan is Premium.');
     }
 }

@@ -9806,6 +9806,18 @@ return { ok: false, message: (err && err.message) || 'Network error while readin
 
         initializeApp();
 
+        if (window.CANVAS_STATUS_MESSAGE) {
+            const toast = document.createElement('div');
+            toast.className = 'canvas-status-toast';
+            toast.textContent = window.CANVAS_STATUS_MESSAGE;
+            document.body.appendChild(toast);
+            setTimeout(() => toast.classList.add('is-visible'), 10);
+            setTimeout(() => {
+            toast.classList.remove('is-visible');
+            setTimeout(() => toast.remove(), 300);
+            }, 6000);
+        }
+
         /* ===== SLIDE PANEL SYSTEM (generic, reutilizabil) ===== */
         const slidePanel = {
         element: document.getElementById('slidePanel'),
@@ -10892,7 +10904,7 @@ return { ok: false, message: (err && err.message) || 'Network error while readin
                 </div>
                 <div class="acct-actions">
                     <a href="${window.CANVAS_PROFILE_EDIT_URL}" class="acct-btn acct-btn-indigo">Update Account</a>
-                    <a href="${window.CANVAS_ACCOUNT_URL}" class="acct-btn acct-btn-danger">Delete Account</a>
+                    <button type="button" id="acctDeleteBtn" class="acct-btn acct-btn-danger">Delete Account</button>
                 </div>
                 </div>
 
@@ -10904,7 +10916,7 @@ return { ok: false, message: (err && err.message) || 'Network error while readin
                 <p class="acct-price">${safeAccount.priceLabel}${billingInterval ? `<span class="acct-price-interval">/${safeAccount.billingInterval}</span>` : ''}</p>
                 <div class="acct-spacer"></div>
                 ${!isPremium
-                    ? `<button type="button" disabled class="acct-upgrade-btn">Upgrade to Premium (coming soon)</button>`
+                    ? `<button type="button" class="acct-upgrade-btn" id="acctUpgradeBtn">Upgrade to Premium</button>`
                     : `<div class="acct-thankyou">Thank you for being Premium.</div>`}
                 </div>
             </div>
@@ -10955,6 +10967,75 @@ return { ok: false, message: (err && err.message) || 'Network error while readin
             form.submit();
             });
         }
+
+        const upgradeBtn = body.querySelector('#acctUpgradeBtn');
+        if (upgradeBtn) {
+            upgradeBtn.addEventListener('click', () => {
+            const form = document.createElement('form');
+            form.method = 'POST';
+            form.action = window.CANVAS_BILLING_CHECKOUT_URL;
+            form.innerHTML = `<input type="hidden" name="_token" value="${__csrfToken}">`;
+            document.body.appendChild(form);
+            form.submit();
+            });
+        }
+
+        const deleteBtn = body.querySelector('#acctDeleteBtn');
+        if (deleteBtn) {
+            deleteBtn.addEventListener('click', () => renderAccountDeleteConfirm(body, data));
+        }
+        }
+
+        function renderAccountDeleteConfirm(body, data) {
+        body.innerHTML = `
+            <div class="acct">
+            <div class="acct-card">
+                <h3 class="acct-label" style="margin-bottom:8px;">Delete account</h3>
+                <p class="acct-note" style="margin-bottom:16px;">This will permanently delete your account and all its data. Enter your password to confirm.</p>
+                <input type="password" id="acctDeletePassword" class="acct-delete-input" placeholder="Password" autocomplete="current-password">
+                <p class="acct-delete-error" id="acctDeleteError" style="display:none;"></p>
+                <div class="acct-actions" style="margin-top:16px;">
+                <button type="button" id="acctDeleteCancelBtn" class="acct-btn acct-btn-indigo">Cancel</button>
+                <button type="button" id="acctDeleteConfirmBtn" class="acct-btn acct-btn-danger">Delete Account</button>
+                </div>
+            </div>
+            </div>
+        `;
+
+        const passwordInput = body.querySelector('#acctDeletePassword');
+        const errorEl = body.querySelector('#acctDeleteError');
+
+        body.querySelector('#acctDeleteCancelBtn').addEventListener('click', () => renderAccountPanel(body, data));
+
+        body.querySelector('#acctDeleteConfirmBtn').addEventListener('click', async () => {
+            errorEl.style.display = 'none';
+
+            const response = await fetch(window.CANVAS_PROFILE_DESTROY_URL, {
+            method: 'DELETE',
+            headers: {
+                'Content-Type': 'application/json',
+                'Accept': 'application/json',
+                'X-CSRF-TOKEN': __csrfToken,
+            },
+            body: JSON.stringify({ password: passwordInput.value }),
+            });
+
+            if (response.ok) {
+            window.location.href = window.CANVAS_HOME_URL;
+            return;
+            }
+
+            if (response.status === 422) {
+            const payload = await response.json();
+            errorEl.textContent = payload.errors?.password?.[0] || 'Incorrect password.';
+            } else {
+            errorEl.textContent = 'Something went wrong. Please try again.';
+            }
+            errorEl.style.display = 'block';
+            passwordInput.focus();
+        });
+
+        passwordInput.focus();
         }
 
         function openUserPanel() {

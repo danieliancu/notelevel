@@ -12,9 +12,11 @@
         window.CANVAS_REGISTER_URL = "{{ route('demo.register') }}";
         window.CANVAS_HOME_URL = "{{ route('home') }}";
         window.CANVAS_ACCOUNT_SUMMARY_URL = "{{ route('account.summary') }}";
-        window.CANVAS_ACCOUNT_URL = "{{ route('account') }}";
         window.CANVAS_PROFILE_EDIT_URL = "{{ route('profile.edit') }}";
+        window.CANVAS_PROFILE_DESTROY_URL = "{{ route('profile.destroy') }}";
         window.CANVAS_LOGOUT_URL = "{{ route('logout') }}";
+        window.CANVAS_BILLING_CHECKOUT_URL = "{{ route('billing.checkout') }}";
+        window.CANVAS_STATUS_MESSAGE = @json(session('status'));
         window.CANVAS_PDF_EXPORT_ALLOWED = {{ (auth()->check() && auth()->user()->effectivePdfExportAllowed()) ? 'true' : 'false' }};
         window.CANVAS_AUTOSAVE_ENABLED = {{ config('canvas.autosave_enabled') ? 'true' : 'false' }};
     </script>
