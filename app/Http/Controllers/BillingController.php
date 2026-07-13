@@ -3,6 +3,7 @@
 namespace App\Http\Controllers;
 
 use App\Models\User;
+use App\Services\CurrencyResolver;
 use App\Services\StripeCheckoutFulfillment;
 use Illuminate\Http\RedirectResponse;
 use Illuminate\Http\Request;
@@ -14,13 +15,20 @@ use Stripe\StripeClient;
 
 class BillingController extends Controller
 {
-    public function checkout(Request $request): RedirectResponse
+    public function checkout(Request $request, CurrencyResolver $currency): RedirectResponse
     {
         $user = $request->user();
         $stripe = new StripeClient(config('services.stripe.secret'));
 
+        // Charge in the same currency the visitor already saw on the pricing
+        // page (via CurrencyResolver), instead of letting Stripe's Adaptive
+        // Pricing negotiate its own currency and show a switcher.
+        $currencyCode = strtolower($currency->resolveCurrencyCode($request));
+
         $params = [
             'mode' => 'subscription',
+            'currency' => $currencyCode,
+            'adaptive_pricing' => ['enabled' => false],
             'line_items' => [[
                 'price' => config('services.stripe.premium_price_id'),
                 'quantity' => 1,
