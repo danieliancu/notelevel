@@ -6814,7 +6814,7 @@
                 textLayer.appendChild(box);
             }
 
-            if (virtualKeyboardTarget) {
+            if (virtualKeyboardTarget && virtualKeyboardTarget.type !== 'chat') {
                 if (virtualKeyboardTarget.type === 'text') {
                     virtualKeyboardTarget.node = textLayer.querySelector(`[data-text-id="${virtualKeyboardTarget.element.id}"] .text-box-content`);
                 } else {
@@ -8414,7 +8414,7 @@
             calculate: false
         };
 
-        function executeCreateAction(params) {
+        async function executeCreateAction(params) {
             const model = currentPageModel();
             const elementType = params.elementType;
             if (elementType === 'text') {
@@ -8459,6 +8459,11 @@
                     || SHAPE_LIBRARY.find((s) => s.shapeType === 'rectangle');
                 const element = insertLibraryShape(entry);
                 if (element && params.color) {
+                    // insertLibraryShape() already kicked off its own renderCurrentPage()
+                    // without awaiting it; wait for that paint to settle before recoloring,
+                    // otherwise the two renders race and the slower one (often the pre-recolor
+                    // paint) can overwrite the canvas with the old color.
+                    await renderCurrentPage();
                     recolorElementById(element.id, params.color);
                 }
                 return Boolean(element);
@@ -8588,7 +8593,7 @@
             }
 
             if (data.kind === 'action' && data.action && data.action.type === 'create') {
-                const ok = executeCreateAction(data.action.params || {});
+                const ok = await executeCreateAction(data.action.params || {});
                 appendChatMessage('ai', ok ? (data.message || 'Done.') : 'I could not create that element.');
                 return;
             }

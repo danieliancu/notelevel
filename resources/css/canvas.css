@@ -1056,7 +1056,7 @@ body {
 .icon-button:disabled {
     color: rgba(102, 112, 133, 0.32);
     cursor: default;
-    background: var(--panel);
+    background: transparent;
     box-shadow: none;
 }
 
