@@ -43,6 +43,21 @@ class PlanQuotaService
         }
     }
 
+    /**
+     * Shared by CanvasApiController's legacy save action and DocumentController's
+     * page-image endpoint so both count against the same plan cap consistently.
+     */
+    public function canvasPagesCapExceeded(User $user, int $currentTotalExcludingDocument, int $newPageCount): bool
+    {
+        $cap = $user->effectiveMaxCanvasPages();
+
+        if ($cap === null) {
+            return false;
+        }
+
+        return ($currentTotalExcludingDocument + $newPageCount) > $cap;
+    }
+
     /** @return array<int, string> */
     public function pdfRules(User $user): array
     {

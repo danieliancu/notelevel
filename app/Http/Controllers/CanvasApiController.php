@@ -273,6 +273,11 @@ class CanvasApiController extends Controller
         return response()->json([
             'ok' => true,
             'file' => $this->ref($folderName, $title),
+            // Additive fields for the REST-autosave migration (see AUDIT.md
+            // "Migrare autosave"): the client previously had no way to learn
+            // a document's numeric id/version when saved via this legacy action.
+            'id' => $document->id,
+            'version' => $document->version,
             'metadata' => [
                 'guideMode' => $guideMode,
                 'guidesVisible' => $guidesVisible,
@@ -683,8 +688,16 @@ class CanvasApiController extends Controller
         }
 
         $content = $document->content;
+        $content = is_array($content) ? $content : ['pages' => []];
 
-        return response()->json(is_array($content) ? $content : ['pages' => []]);
+        // Additive fields for the REST-autosave migration: the client has no
+        // other way to learn a document's real numeric id/version today (see
+        // AUDIT.md "Migrare autosave"). Overwrites any stale fake `version`
+        // baked into `content` by the legacy save action on purpose.
+        return response()->json(array_merge($content, [
+            'id' => $document->id,
+            'version' => $document->version,
+        ]));
     }
 
     private function pageImage(Request $request): Response

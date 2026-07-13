@@ -16,6 +16,7 @@
         window.CANVAS_PROFILE_EDIT_URL = "{{ route('profile.edit') }}";
         window.CANVAS_LOGOUT_URL = "{{ route('logout') }}";
         window.CANVAS_PDF_EXPORT_ALLOWED = {{ (auth()->check() && auth()->user()->effectivePdfExportAllowed()) ? 'true' : 'false' }};
+        window.CANVAS_AUTOSAVE_ENABLED = {{ config('canvas.autosave_enabled') ? 'true' : 'false' }};
     </script>
     <script>
         window.MathJax = {

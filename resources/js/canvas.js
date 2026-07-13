@@ -111,6 +111,11 @@
         let pendingRenameName = '';
         let pendingNewAfterSave = false;
         let currentFilename = '';
+        // Numeric id/version of the open document, for the REST-autosave migration
+        // (see AUDIT.md "Migrare autosave") — used by both the background autosave
+        // and the primary Save/Ctrl+S flow when window.CANVAS_AUTOSAVE_ENABLED is on.
+        let currentDocumentId = null;
+        let currentVersion = null;
         let inputMode = localStorage.getItem('fixbly.inputMode') || 'auto';
         let activeTool = 'pen';
         let lastDrawingTool = 'pen';
@@ -887,6 +892,8 @@
                 localStorage.setItem(sessionStorageKey, JSON.stringify({
                     version: 1,
                     currentFilename,
+                    currentDocumentId,
+                    currentVersion,
                     currentPage,
                     perfectShapeMode,
                     aiCostTotalGbp,
@@ -910,11 +917,149 @@
 
             window.clearTimeout(sessionSaveTimer);
             sessionSaveTimer = window.setTimeout(() => saveSessionNow({ includePages: false }), 2000);
+            scheduleServerAutosave();
         }
 
         function clearSavedSession() {
             window.clearTimeout(sessionSaveTimer);
             localStorage.removeItem(sessionStorageKey);
+        }
+
+        // --- Autosave migration (see AUDIT.md "Migrare autosave") ---
+        // Background durability autosave to documents/{id}/autosave, layered on top
+        // of saveDrawing() (which, per Stage 3, also uses the REST path by default
+        // now — see saveDrawingRest()). Gated by window.CANVAS_AUTOSAVE_ENABLED
+        // (default true; false is an instant rollback to the legacy /canvas/api
+        // path). Only runs once a document has a known numeric id/version. The
+        // crash-recovery localStorage saving above is untouched by any of this.
+        let serverAutosaveTimer = 0;
+        let serverAutosaveInFlight = false;
+        // Set on a 409 version_conflict; deliberately never auto-resolved (would
+        // risk silently overwriting either side) until the user reloads.
+        let serverAutosaveBlocked = false;
+
+        function generateRequestId() {
+            // crypto.randomUUID() requires a secure context (https or localhost) -
+            // plain-http local/dev hosts (e.g. this project's notelevel.test) don't
+            // qualify, so fall back to a manual RFC4122-ish v4 generator. Only needs
+            // to be unique, not cryptographically strong (it's an idempotency key).
+            if (window.crypto && typeof window.crypto.randomUUID === 'function') {
+                try {
+                    return window.crypto.randomUUID();
+                } catch (error) {
+                    // fall through
+                }
+            }
+            return 'xxxxxxxx-xxxx-4xxx-yxxx-xxxxxxxxxxxx'.replace(/[xy]/g, (char) => {
+                const random = (Math.random() * 16) | 0;
+                const value = char === 'x' ? random : (random & 0x3) | 0x8;
+                return value.toString(16);
+            });
+        }
+
+        function mapGuideModeForRest(mode) {
+            if (mode === 'ruled' || mode === 'dictation') {
+                return 'lined';
+            }
+            if (mode === 'grid') {
+                return 'grid';
+            }
+            return 'none';
+        }
+
+        function canAttemptServerAutosave() {
+            return Boolean(window.CANVAS_AUTOSAVE_ENABLED)
+                && !serverAutosaveBlocked
+                && Number.isInteger(currentDocumentId)
+                && Number.isInteger(currentVersion);
+        }
+
+        function scheduleServerAutosave() {
+            if (sessionRestoreInProgress || !canAttemptServerAutosave()) {
+                return;
+            }
+            window.clearTimeout(serverAutosaveTimer);
+            // Deliberately longer than the 2s local session-save debounce above:
+            // this is a network call whose only job is durability (crash recovery
+            // is already covered by localStorage), not a fast local snapshot.
+            serverAutosaveTimer = window.setTimeout(performServerAutosave, 8000);
+        }
+
+        function showAutosaveConflictNotice() {
+            const status = document.getElementById('saveStatus');
+            if (status) {
+                status.textContent = 'This document changed elsewhere. Reload the page to see the latest version before continuing.';
+            }
+        }
+
+        async function uploadDirtyPagesToServer(pageNumbers) {
+            const payloadPages = pageNumbers
+                .filter((page) => pages.has(page))
+                .map((page) => ({ page, image: pages.get(page) }));
+            if (payloadPages.length === 0) {
+                return;
+            }
+            try {
+                const response = await fetch(`/documents/${currentDocumentId}/pages`, {
+                    method: 'POST',
+                    headers: { 'Content-Type': 'application/json', 'X-CSRF-TOKEN': __csrfToken },
+                    body: JSON.stringify({ pages: payloadPages })
+                });
+                const data = await response.json().catch(() => ({}));
+                if (response.ok && data.ok) {
+                    for (const page of pageNumbers) {
+                        dirtyPages.delete(page);
+                    }
+                }
+            } catch (error) {
+                // Fail silently: pages stay marked dirty and are retried on the next tick.
+            }
+        }
+
+        async function performServerAutosave() {
+            if (serverAutosaveInFlight || !canAttemptServerAutosave()) {
+                return;
+            }
+            serverAutosaveInFlight = true;
+            const requestId = generateRequestId();
+            const contentPayload = buildDocumentContentPayload();
+            const paperMetadata = currentPaperMetadata();
+            const pagesToUpload = [...dirtyPages];
+
+            try {
+                const response = await fetch(`/documents/${currentDocumentId}/autosave`, {
+                    method: 'POST',
+                    headers: { 'Content-Type': 'application/json', 'X-CSRF-TOKEN': __csrfToken },
+                    body: JSON.stringify({
+                        request_id: requestId,
+                        version: currentVersion,
+                        content: contentPayload,
+                        page_count: contentPayload.pages.length,
+                        guideMode: mapGuideModeForRest(paperMetadata.guideMode),
+                        guidesVisible: paperMetadata.guidesVisible
+                    })
+                });
+                const data = await response.json().catch(() => ({}));
+
+                if (response.status === 409) {
+                    serverAutosaveBlocked = true;
+                    showAutosaveConflictNotice();
+                    return;
+                }
+                if (!response.ok || !data.ok) {
+                    return;
+                }
+
+                currentVersion = data.version;
+                if (pagesToUpload.length > 0) {
+                    await uploadDirtyPagesToServer(pagesToUpload);
+                }
+            } catch (error) {
+                // Network failure: fail silently. Local session save (localStorage)
+                // remains the safety net; the next edit reschedules another attempt.
+            } finally {
+                serverAutosaveInFlight = false;
+            }
         }
 
         function startMainThreadLagMonitor() {
@@ -988,6 +1133,8 @@
             aiCostLastGbp = normalizeCost(data.aiCostLastGbp);
             hasUnsavedChanges = Boolean(data.hasUnsavedChanges);
             setCurrentFile(typeof data.currentFilename === 'string' ? data.currentFilename : '');
+            currentDocumentId = Number.isInteger(data.currentDocumentId) ? data.currentDocumentId : null;
+            currentVersion = Number.isInteger(data.currentVersion) ? data.currentVersion : null;
             updateAiCostBadge();
             applyPaperMetadata(data.paper || {});
             sessionRestoreInProgress = false;
@@ -5019,6 +5166,9 @@
             drawGuides();
             setTool('pen');
             setCurrentFile('');
+            currentDocumentId = null;
+            currentVersion = null;
+            serverAutosaveBlocked = false;
             updateAiCostBadge();
             hasUnsavedChanges = false;
             if (closeOpenModals) {
@@ -7949,13 +8099,10 @@
             }
         }
 
-        async function saveDrawing(overwrite = false, options = {}) {
-            const newAfterSave = Boolean(options.newAfterSave);
-            const filename = options.filename || '';
-            const status = document.getElementById('saveStatus');
-            const form = new FormData();
-            rememberCurrentPage();
-            const documentPayload = {
+        // Shared by the legacy saveDrawing() form-post and the Stage 2 REST
+        // autosave call, so both send the exact same vector/element snapshot.
+        function buildDocumentContentPayload() {
+            return {
                 version: 1,
                 aiCostTotalGbp: normalizeCost(aiCostTotalGbp),
                 pages: [...pageModels.entries()]
@@ -7963,6 +8110,26 @@
                     .sort((a, b) => a[0] - b[0])
                     .map(([page, model]) => ({ page, ...model }))
             };
+        }
+
+        // Stage 3 of the autosave migration (see AUDIT.md "Migrare autosave"):
+        // dispatches to the new REST-based save path when the flag is on, keeping
+        // the legacy /canvas/api path fully intact (and just a flag flip away)
+        // for instant fallback.
+        async function saveDrawing(overwrite = false, options = {}) {
+            if (window.CANVAS_AUTOSAVE_ENABLED) {
+                return saveDrawingRest(overwrite, options);
+            }
+            return saveDrawingLegacy(overwrite, options);
+        }
+
+        async function saveDrawingLegacy(overwrite = false, options = {}) {
+            const newAfterSave = Boolean(options.newAfterSave);
+            const filename = options.filename || '';
+            const status = document.getElementById('saveStatus');
+            const form = new FormData();
+            rememberCurrentPage();
+            const documentPayload = buildDocumentContentPayload();
             const pagePayload = [...pages.entries()]
                 .sort((a, b) => a[0] - b[0])
                 .map(([page, image]) => ({ page, image }));
@@ -7998,6 +8165,8 @@
                     status.textContent = `Saved: ${displayName(data.file)}`;
                     overwriteStatus.textContent = `Saved: ${displayName(data.file)}`;
                     setCurrentFile(data.file);
+                    currentDocumentId = Number.isInteger(data.id) ? data.id : currentDocumentId;
+                    currentVersion = Number.isInteger(data.version) ? data.version : currentVersion;
                     hasUnsavedChanges = false;
                     dirtyPages.clear();
                     saveSessionNow({ includePages: true });
@@ -8015,6 +8184,128 @@
             } catch (error) {
                 status.textContent = 'Save failed.';
                 document.getElementById('overwriteStatus').textContent = 'Save failed.';
+            } finally {
+                hideSavingSpinner();
+            }
+        }
+
+        // Resolves (creating or overwriting as needed) the numeric document row
+        // for a target "folder/title" filename via the REST endpoints, mirroring
+        // the legacy dispatcher's create-if-missing + overwrite-confirm semantics.
+        // Returns { conflict: true } on an unconfirmed name collision, otherwise
+        // { id, version }.
+        async function resolveDocumentForSave(targetFilename, overwrite, contentPayload, paperMetadata) {
+            const folderName = fileFolder(targetFilename);
+            const title = displayName(targetFilename);
+            const response = await fetch('/documents', {
+                method: 'POST',
+                headers: { 'Content-Type': 'application/json', 'X-CSRF-TOKEN': __csrfToken },
+                body: JSON.stringify({
+                    title,
+                    folder: folderName || undefined,
+                    overwrite: Boolean(overwrite),
+                    content: contentPayload,
+                    page_count: contentPayload.pages.length,
+                    guideMode: mapGuideModeForRest(paperMetadata.guideMode),
+                    guidesVisible: paperMetadata.guidesVisible
+                })
+            });
+            if (response.status === 409) {
+                return { conflict: true };
+            }
+            const data = await response.json().catch(() => ({}));
+            if (!response.ok || !Number.isInteger(data.id)) {
+                throw new Error(data.error || 'Save failed.');
+            }
+            return { id: data.id, version: data.version };
+        }
+
+        async function saveDrawingRest(overwrite = false, options = {}) {
+            const newAfterSave = Boolean(options.newAfterSave);
+            const filename = options.filename || '';
+            const status = document.getElementById('saveStatus');
+            const overwriteStatus = document.getElementById('overwriteStatus');
+            rememberCurrentPage();
+            const contentPayload = buildDocumentContentPayload();
+            const paperMetadata = currentPaperMetadata();
+            const filenameInput = document.getElementById('filenameInput');
+            const targetFilename = filename || filenameInput.value.trim() || filenameInput.placeholder;
+
+            status.textContent = overwrite ? '' : 'Saving...';
+            overwriteStatus.textContent = overwrite ? 'Overwriting...' : '';
+            showSavingSpinner();
+
+            try {
+                let documentId = currentDocumentId;
+                let version = currentVersion;
+
+                // Only need to resolve/create a document row via POST /documents when
+                // we don't already know which one is open, or the user is saving
+                // under a different name (Save As) than the currently open document.
+                if (!Number.isInteger(documentId) || targetFilename !== currentFilename) {
+                    const resolved = await resolveDocumentForSave(targetFilename, overwrite, contentPayload, paperMetadata);
+                    if (resolved.conflict) {
+                        pendingOverwriteName = targetFilename;
+                        pendingNewAfterSave = newAfterSave;
+                        overwriteText.textContent = `"${displayName(targetFilename)}" already exists. Do you want to overwrite it?`;
+                        status.textContent = '';
+                        overwriteStatus.textContent = '';
+                        openModal('overwriteModal');
+                        return;
+                    }
+                    documentId = resolved.id;
+                    version = resolved.version;
+                }
+
+                const requestId = generateRequestId();
+                const response = await fetch(`/documents/${documentId}/autosave`, {
+                    method: 'POST',
+                    headers: { 'Content-Type': 'application/json', 'X-CSRF-TOKEN': __csrfToken },
+                    body: JSON.stringify({
+                        request_id: requestId,
+                        version,
+                        content: contentPayload,
+                        page_count: contentPayload.pages.length,
+                        guideMode: mapGuideModeForRest(paperMetadata.guideMode),
+                        guidesVisible: paperMetadata.guidesVisible
+                    })
+                });
+                const data = await response.json().catch(() => ({}));
+
+                if (response.status === 409) {
+                    const message = 'This document changed elsewhere. Reload the page to see the latest version before continuing.';
+                    status.textContent = message;
+                    overwriteStatus.textContent = message;
+                    return;
+                }
+                if (!response.ok || !data.ok) {
+                    const message = data.error || 'Save failed.';
+                    status.textContent = message;
+                    overwriteStatus.textContent = message;
+                    return;
+                }
+
+                currentDocumentId = documentId;
+                currentVersion = data.version;
+                serverAutosaveBlocked = false;
+                setCurrentFile(targetFilename);
+                status.textContent = `Saved: ${displayName(targetFilename)}`;
+                overwriteStatus.textContent = `Saved: ${displayName(targetFilename)}`;
+                hasUnsavedChanges = false;
+                const pagesToUpload = [...dirtyPages];
+                dirtyPages.clear();
+                saveSessionNow({ includePages: true });
+                if (pagesToUpload.length > 0) {
+                    await uploadDirtyPagesToServer(pagesToUpload);
+                }
+                if (newAfterSave) {
+                    resetToNewDrawing();
+                    return;
+                }
+                closeModals();
+            } catch (error) {
+                status.textContent = 'Save failed.';
+                overwriteStatus.textContent = 'Save failed.';
             } finally {
                 hideSavingSpinner();
             }
@@ -8177,7 +8468,6 @@
         });
         if (chatToggle && chatBar) {
         chatToggle.addEventListener('change', () => {
-            const reopenAiMenu = aiMenu.classList.contains('is-open') || document.activeElement === chatToggle;
             if (chatMenuRow) {
             chatMenuRow.classList.toggle('is-active', chatToggle.checked);
             }
@@ -8204,12 +8494,10 @@
             }
             closeChatSlashMenu();
             }
-            if (reopenAiMenu && !aiMenu.classList.contains('is-open')) {
-                aiMenu.classList.add('is-open');
-                aiMenu.setAttribute('aria-hidden', 'false');
-                aiBtn.setAttribute('aria-expanded', 'true');
-                aiBtn.classList.add('is-menu-active');
-            }
+            // Toggling chat closes the AI-tools dropdown (ai-menu) instead of
+            // reopening it, so the chat panel isn't left competing with the
+            // dropdown for the user's attention right after opening/closing it.
+            closeToolbarMenus();
             positionChatThread();
             window.setTimeout(positionChatThread, 200);
         });
@@ -9472,6 +9760,9 @@ return { ok: false, message: (err && err.message) || 'Network error while readin
                         }
                     }
                 }
+                currentVersion = documentData && Number.isInteger(documentData.version) ? documentData.version : null;
+                const idMatch = typeof file.documentUrl === 'string' && file.documentUrl.match(/[?&]id=(\d+)/);
+                currentDocumentId = idMatch ? Number(idMatch[1]) : null;
 
                 pages = loadedPages;
                 pageImageSizes = loadedPageImageSizes;

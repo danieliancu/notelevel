@@ -75,6 +75,7 @@ Route::domain(config('domains.marketing'))->group(function () {
             Route::post('documents/{document}/duplicate', [DocumentController::class, 'duplicate']);
             Route::patch('documents/{document}/move', [DocumentController::class, 'move']);
             Route::post('documents/{document}/autosave', [DocumentController::class, 'autosave']);
+            Route::post('documents/{document}/pages', [DocumentController::class, 'savePages']);
 
             // Legacy compatibility: GET is strictly read-only; mutations remain CSRF-protected POSTs.
             Route::get('/canvas/api', [CanvasApiController::class, 'handleRead'])->middleware('legacy.deprecated');

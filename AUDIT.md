@@ -11,6 +11,21 @@ In plus, de facut:
 - posibilitatea de a face zoom
 - securizarea informatiilor (nimeni sa nu poata sa vada ce e acolo, sa fie criptat 100%)
 
+> **Actualizare audit — 13 iulie 2026:** re-verificare critică a stării curente, 3 zile după remedierea P2. Verdictul **rămâne "nu este pregătită pentru producție"**.
+>
+> **Corecție importantă la P2-1 (marcat ✅ mai sus):** afirmația "API-ul legacy... successor link" lasă impresia că migrarea către noul flux e completă. **Nu este.** `resources/js/canvas.js` — codul care rulează efectiv în UI — nu apelează niciodată ruta nouă `documents/{document}/autosave`; fluxul real de salvare al canvasului folosește exclusiv `POST /canvas/api` (acțiunea `save`, marcată `legacy.deprecated`). Toată protecția la conflict de versiune și idempotency construită și testată în `tests/Feature/P2AutosaveTest.php` pentru ruta nouă **nu apără niciun utilizator real** — e cod mort din perspectiva UI-ului. Migrarea reală a fluxului de salvare a fost pornită azi (vezi secțiunea "Migrare autosave — status pe etape" de mai jos). **Recomandare**: orice alt ✅ din acest document ar trebui re-verificat printr-un test manual/automat al fluxului UI real, nu doar prin citirea codului backend izolat.
+>
+> **Descoperiri noi, neacoperite de auditul din 10 iulie:**
+> - **Nu există procesare de plăți** — schema `Plan` are `price_cents`/planuri "premium", dar nicio integrare Stripe/altă platformă, niciun controller de billing, niciun webhook. Dacă planurile plătite fac parte din propunerea de lansare, funcționalitatea de bază lipsește complet.
+> - **Nicio configurație de deploy/CI** — fără `Dockerfile`/`docker-compose`/`Procfile`, fără `.github/workflows`, README încă boilerplate Laravel generic.
+> - **Niciun backup configurat** — nici pachet (`spatie/laravel-backup`), nici `SoftDeletes` pe modelele cu conținut utilizator, deși politica de confidențialitate promite "backup-uri pe termen scurt".
+> - **`APP_DEBUG=true` + `APP_ENV=local`** în `.env`-ul curent — de verificat explicit înainte de orice deploy real.
+> - **Fără HSTS**, și **`SESSION_SECURE_COOKIE`** nesetat explicit (config depinde de infra să forțeze HTTPS).
+> - **Fără rate limiting la înregistrare** — combinat cu AUTH-01 (încă deschis), permite creare în masă de conturi neverificate care lovesc imediat `/canvas/ai` și storage-ul.
+> - **Fără telemetrie de erori JS** (`window.onerror`/`unhandledrejection`/Sentry) — frontend-ul de 10.700+ linii e opac în producție; există doar `OperationalAlert` pe partea PHP.
+> - **21 de apeluri `renderCurrentPage().catch(error => console.error(error))`** în `canvas.js` — pattern fire-and-forget repetat masiv; o randare eșuată lasă canvasul vizual desincronizat de model, fără nicio indicație pentru utilizator. Aceeași clasă de bug ca două bug-uri de randare deja reparate azi (crash pe mobil la `/translate` prin `virtualKeyboardTarget`, și o cursă de randare la crearea formelor colorate prin AI).
+> - **Fără avertisment la închiderea tab-ului cu modificări nesalvate** (`beforeunload` scrie doar în `localStorage`) — combinat cu lipsa de retry la eșecul de salvare, risc real de pierdere silențioasă a muncii utilizatorului.
+
 ## 1. Rezumat executiv
 
 ### Verdict
@@ -499,3 +514,62 @@ Lansarea poate fi reconsiderată numai când:
 Notelevel este mai aproape de un prototip avansat decât de un serviciu pregătit pentru producție. Fundația Laravel și modelarea domeniului sunt suficiente pentru a continua, iar build-ul și dependențele nu indică probleme imediate. Totuși, endpointul legacy mutabil prin GET, inconsistența runtime-ului, lipsa atomicității storage și acoperirea de test insuficientă fac riscul de lansare inacceptabil în forma actuală.
 
 Ordinea corectă este: securizarea contractelor HTTP, stabilizarea mediului și a testelor, garantarea integrității/izolării datelor, apoi controlul AI și auditul UX dinamic. Refactorizarea monolitului canvas trebuie făcută ulterior, incremental, după introducerea testelor de caracterizare.
+
+## 11. Migrare autosave — status pe etape (pornită 13 iulie 2026)
+
+Context: vezi corecția la P2-1 de la începutul documentului. Migrarea reală a fluxului de salvare canvas de pe `/canvas/api` (legacy) pe `documents/{document}/autosave` (nou, testat) se face în etape independent-verificabile și reversibile, cu fallback pe calea legacy păstrată funcțională până la capăt.
+
+| Etapă | Descriere | Status |
+|---|---|---|
+| 0 | Backend: endpoint nou `documents/{document}/pages` pentru imagini de pagină (JPEG raster), care lipsesc complet din contractul `autosave` | ✅ Făcut (13 iulie) |
+| 1 | Client: `canvas.js` capătă tracking de `currentDocumentId`/`currentVersion`, fără schimbare de rețea | ✅ Făcut (13 iulie) |
+| 2 | Client: autosave real de fundal, dual-write alături de salvarea explicită, în spatele unui feature flag | ✅ Făcut (13 iulie), flag ON |
+| 3 | Client: promovarea autosave la calea principală de salvare; legacy devine fallback | ✅ Făcut (13 iulie), flag ON |
+| 4 | Curățenie: eliminare flag-uri, monitorizare permanentă | ✅ Făcut (13 iulie) |
+
+Detalii complete ale planului (inclusiv întrebările deschise de produs/design pentru etapele 2-3) în planul de sesiune asociat, nu duplicate aici pentru a evita divergența dintre documente pe măsură ce planul evoluează.
+
+**Etapa 0 — detalii implementare (13 iulie 2026):**
+- `DocumentController::savePages()` ([app/Http/Controllers/DocumentController.php](app/Http/Controllers/DocumentController.php)) — nou endpoint `POST documents/{document}/pages`, reutilizează `TenantStorageTransaction::replaceDirectory()` cu aceeași convenție de path ca fluxul legacy (`{userId}/documents/{documentId}/pages/{n}.jpg`), astfel încât acțiunea de citire `page_image` funcționează neschimbat indiferent de calea de salvare folosită.
+- Update parțial: doar paginile trimise sunt înlocuite — paginile existente, netrimise, sunt citite și incluse în setul scris, ca `replaceDirectory` (care înlocuiește tot directorul) să nu șteargă paginile neatinse.
+- Cota de pagini per plan e acum partajată printr-o metodă nouă `PlanQuotaService::canvasPagesCapExceeded()`, ca ambele căi (legacy și nouă) să numere consecvent față de aceeași limită.
+- Test nou `tests/Feature/DocumentPagesEndpointTest.php` (6 teste: scriere+citire round-trip, update parțial fără pierderea paginilor vechi, respingere payload invalid, izolare cross-tenant, aplicare cotă). Suita completă rulează verde: **57 teste, 186 assertions**, fără regresii.
+- Fără schimbări client în această etapă — `canvas.js` încă nu apelează noul endpoint (asta e Etapa 1+).
+
+**Etapa 1 — detalii implementare (13 iulie 2026):**
+- `canvas.js` capătă `currentDocumentId`/`currentVersion`, populate din date deja disponibile: `loadDocument()` le extrage din `file.documentUrl` (regex `id=`) și din noul câmp `version` returnat de `get_document`; `saveDrawing()` le capătă din răspunsul salvării (acum include `id`+`version`, aditiv). Resetate la `null` în `clearCurrentDocumentState()`. Persistate/restaurate prin `localStorage` alături de `currentFilename` (`saveSessionNow`/`restoreSessionData`).
+- Backend: `CanvasApiController::getDocument()` și `::save()` întorc acum și `id`+`version` (aditiv — nimic din codul existent citea aceste chei, verificat prin citirea `loadDocumentData()`/`loadDocument()`).
+- Rename/move/duplicate/folder-actions rămân neschimbate — id-ul documentului deschis nu se schimbă la redenumire/mutare, deci nu necesită actualizare de `currentDocumentId`.
+- Verificare: suita completă de teste PHP rulează verde (57 teste, 186 assertions, fără regresii), `npm run build` trece fără erori de sintaxă. **Limitare**: nu există în acest mediu un tool de automatizare browser (ex. Playwright/chromium-cli) pentru un smoke-test real E2E — verificarea vizuală (deschidere `/demo`, desenare, salvare, confirmare `currentDocumentId` populat corect în consola browserului) rămâne de făcut manual.
+- Nicio schimbare de comportament vizibilă utilizatorului în această etapă — pur pregătire de stare pentru Etapa 2.
+
+**Etapa 2 — detalii implementare (13 iulie 2026):**
+- Flag nou `config('canvas.autosave_enabled')` (env `CANVAS_AUTOSAVE_ENABLED`, **implicit `false`**), injectat în `canvas.js` prin `window.CANVAS_AUTOSAVE_ENABLED` — nicio infrastructură de feature-flag existentă găsită, deci am adăugat una minimală, urmând convenția deja folosită pentru `CANVAS_DEMO_MODE` etc.
+- `canvas.js`: `scheduleServerAutosave()`/`performServerAutosave()` — autosave de fundal cu debounce propriu de 8s (separat de debounce-ul de 2s al `localStorage`), declanșat din `scheduleSessionSave()` (același punct comun folosit de toate acțiunile de editare). Rulează doar când flag-ul e activ **și** documentul are deja `currentDocumentId`/`currentVersion` cunoscute (Etapa 1) — nu creează documente noi.
+- Trimite `content` (reutilizează exact serializarea vectorială din `saveDrawing`, extrasă acum într-un helper comun `buildDocumentContentPayload()`), `request_id` (UUID nou per încercare, cu fallback pentru `crypto.randomUUID()` care necesită context securizat/HTTPS — `notelevel.test` local e doar HTTP), și `guideMode` mapat (`ruled→lined`, restul neschimbat).
+- Imaginile de pagină NU se trimit prin autosave — merg separat, doar paginile modificate (`dirtyPages`), către endpoint-ul din Etapa 0 (`uploadDirtyPagesToServer()`), după un autosave reușit.
+- La `409 version_conflict`: autosave-ul de fundal se oprește (`serverAutosaveBlocked`), utilizatorul vede un mesaj clar în `#saveStatus` ("acest document s-a schimbat în altă parte, reîncarcă pagina") — **nicio rezolvare automată/silențioasă**. UX-ul exact (modal blocant vs. text simplu) rămâne întrebare deschisă de produs (vezi planul de sesiune); implementarea curentă e varianta minimă, sigură, non-distructivă.
+- La orice altă eroare (rețea, 422, 500): eșuează silențios, se reîncearcă la următoarea editare — salvarea locală (`localStorage`) rămâne plasa de siguranță, salvarea explicită (Ctrl+S) rămâne complet neschimbată.
+- **Verificare**: suita completă de teste (57 teste, 186 assertions) verde, `npm run build` trece curat. Am simulat direct (fără browser, prin `curl` cu o sesiune reală de `/demo`) exact cererile pe care le trimite noul cod: creare document → autosave (versiune incrementată corect 1→2) → upload pagini → autosave cu versiune învechită → confirmat `409` cu `version_conflict`. Toate integrările funcționează exact cum se așteaptă codul client. Documentul de test a fost șters după verificare.
+- Flag-ul a fost **activat** (`CANVAS_AUTOSAVE_ENABLED=true` în `.env`) odată cu Etapa 3, la cererea explicită a userului — nu există încă utilizatori reali de protejat printr-o perioadă de "bake", deci s-a sărit direct la promovare.
+
+**Etapa 3 — detalii implementare (13 iulie 2026):**
+- `saveDrawing()` din `canvas.js` e acum un dispecer: dacă flag-ul e activ, apelează noua `saveDrawingRest()`; altfel, `saveDrawingLegacy()` (codul vechi, complet neschimbat, redenumit). Comutarea înapoi la legacy = doar `CANVAS_AUTOSAVE_ENABLED=false` + `config:clear`, fără nicio altă schimbare de cod.
+- `saveDrawingRest()`: dacă documentul deschis are deja `currentDocumentId`/`currentVersion` cunoscute (Etapa 1) și numele nu s-a schimbat, salvează direct prin `autosave()` + upload de pagini modificate. Altfel (document nou sau "Save As" cu alt nume), rezolvă/creează documentul prin `POST /documents`.
+- **Backend, `DocumentController::store()`** extins minimal (aditiv, nimic din contractul vechi rupt — verificat, nu exista niciun consumator al formei vechi de eroare): acceptă acum `folder` (nume, creează folderul dacă lipsește, exact ca fluxul legacy) pe lângă `folder_id` existent, și `overwrite` (dacă e `true` peste un titlu existent, actualizează acel document — `version+1` — în loc să arunce eroare; dacă e `false`, întoarce `409 {exists:true}` în loc de o eroare de validare generică, ca UI-ul de confirmare "Overwrite?" să funcționeze identic cu fluxul legacy).
+- Teste noi `tests/Feature/DocumentStoreOverwriteTest.php` (creare folder după nume, respingere coliziune fără overwrite, overwrite actualizează documentul existent fără duplicat) — toate verzi.
+- **Verificare end-to-end** (din nou prin `curl` cu sesiune reală `/demo`, nu doar teste unitare): creare document cu folder nou după nume → coliziune pe același nume fără overwrite → `409` → overwrite → document actualizat (`version` 1→2, același `id`, nu duplicat) → autosave pe acel document (`version` 2→3) → upload pagini → șters la final. Exact secvența pe care o execută `saveDrawingRest()` în realitate.
+- Suita completă: **60 teste, 196 assertions**, toate verzi. `npm run build` trece curat.
+- Codul legacy (`saveDrawingLegacy`, `CanvasApiController::save()`) rămâne complet prezent și funcțional — nu a fost șters nimic, doar ocolit condiționat de flag.
+
+**Notă operațională — CSS lipsă în dev local (13 iulie 2026):** de mai multe ori în timpul zilei, pagina servită prin XAMPP a apărut nestilizată. Cauza, de fiecare dată: fișierul `public/hot` (marker Laravel că un server Vite dev rulează) reapărea din cauza unor procese `npm run dev` rămase pornite dintr-o sesiune anterioară de testare (via Herd), care recreau fișierul periodic. Rezolvare finală: procesele Vite dev rămase au fost oprite explicit și `public/hot` șters; `public/build` (build de producție) e sursa stabilă de assets pentru accesul prin XAMPP. **Nu porni `npm run dev`** dacă vrei ca site-ul din XAMPP să rămână stilizat corect — după orice modificare în `resources/js` sau `resources/css`, rulează `npm run build` în loc.
+
+**Etapa 4 — detalii implementare (13 iulie 2026):**
+- **Flag-ul devine implicit `true`** (`config/canvas.php`: `env('CANVAS_AUTOSAVE_ENABLED', true)`, actualizat și în `.env.example`). Deliberat **nu** a fost eliminat/hardcodat în cod — rămâne un veritabil kill-switch: `CANVAS_AUTOSAVE_ENABLED=false` + `php artisan config:clear` întoarce instant la calea legacy, fără niciun deploy de cod.
+- **Decizie explicită pe soarta codului legacy**: `CanvasApiController::save()` și `saveDrawingLegacy()` din `canvas.js` **rămân în cod**, nešterse. Sunt deja marcate `legacy.deprecated` (adaugă header-e `Deprecation`/`Sunset`) și reprezintă singura cale de rollback fără deploy. Ștergerea lor e o decizie separată, ulterioară, după o perioadă reală de funcționare fără incidente — nu s-a considerat responsabil să fie șterse în aceeași sesiune în care ruta nouă a fost promovată la calea principală, indiferent de faptul că nu există încă utilizatori reali de protejat.
+- **Monitorizare adăugată** (nu exista nicio infrastructură de metrici — s-au folosit loguri structurate, urmând convenția deja existentă `tenant_storage.*`): `canvas.autosave_version_conflict` (warning, la fiecare 409), `canvas.autosave_idempotency_key_reused` (warning, la fiecare 422 de tip idempotency), `canvas.autosave_pages_quota_exceeded` (info, la fiecare 402 de cotă pagini). Eșecurile reale de scriere pe disk erau deja acoperite generic de `OperationalAlert`/exception handler; ce lipsea era semnalul pentru răspunsurile "silențioase" (409/422/402), care nu sunt excepții.
+- Teste noi/extinse: `P2AutosaveTest` și `DocumentPagesEndpointTest` verifică acum explicit (`Log::spy()`) că fiecare din cele 3 evenimente se loghează corect cu contextul așteptat (`document_id`, versiuni etc.).
+- **Verificare**: suită completă — **60 teste, 199 assertions**, verde. `npm run build` curat. Flag confirmat `true` în pagina servită live prin XAMPP.
+- **Ce rămâne, deliberat, pentru mai târziu** (nu parte din "curățenie", ci decizii separate de operare): dashboard/alertare reală pe aceste loguri (azi sunt doar scrise în `storage/logs/laravel.log`, fără agregare), și decizia de ștergere a codului legacy după o perioadă de observare.
+
+**Fix separat, azi**: cursorul care nu clipea la focus pe inputul gol din chat-ul AI — `resources/css/canvas.css`, regula `.chat-input:empty { caret-color: transparent; }` ascundea cursorul necondiționat, inclusiv când inputul era focusat. Corectat la `.chat-input:empty:not(:focus)`, ca placeholder-ul să rămână fără cursor doar când inputul NU e focusat.

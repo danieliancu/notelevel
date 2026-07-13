@@ -5,14 +5,21 @@ namespace App\Http\Controllers;
 use App\Models\Document;
 use App\Models\Folder;
 use App\Services\DocumentManager;
+use App\Services\PlanQuotaService;
+use App\Services\TenantStorageTransaction;
 use App\Support\NameSanitizer;
 use Illuminate\Http\Request;
 use Illuminate\Support\Facades\DB;
-use Illuminate\Validation\ValidationException;
+use Illuminate\Support\Facades\Log;
+use Illuminate\Support\Facades\Storage;
 
 class DocumentController extends Controller
 {
-    public function __construct(private DocumentManager $documents) {}
+    public function __construct(
+        private DocumentManager $documents,
+        private TenantStorageTransaction $storageTransaction,
+        private PlanQuotaService $quotas,
+    ) {}
 
     public function index(Request $request)
     {
@@ -26,8 +33,36 @@ class DocumentController extends Controller
         $title = NameSanitizer::name((string) $request->input('title', ''), 'untitled');
         $folderId = $this->resolveFolderId($request->input('folder_id'));
 
-        if (Document::where('title', $title)->where('folder_id', $folderId)->exists()) {
-            throw ValidationException::withMessages(['title' => 'A document with that name already exists.']);
+        // Stage 3 of the autosave migration (see AUDIT.md "Migrare autosave"):
+        // canvas.js's "Save As" flow only knows a folder by name (like the legacy
+        // /canvas/api dispatcher did), not by id, and needs the exact-same
+        // create-if-missing + overwrite-confirm UX. Both are additive/optional so
+        // any other caller using bare `folder_id` keeps working unchanged.
+        if ($folderId === null && $request->filled('folder')) {
+            $folderName = NameSanitizer::name((string) $request->input('folder'), 'folder');
+            $folderId = Folder::firstOrCreate(['name' => $folderName])->id;
+        }
+
+        $existing = Document::where('title', $title)->where('folder_id', $folderId)->first();
+        if ($existing) {
+            if (! $request->boolean('overwrite')) {
+                return response()->json([
+                    'ok' => false,
+                    'exists' => true,
+                    'error' => 'A document with that name already exists.',
+                ], 409);
+            }
+
+            $existing->update([
+                'content' => $request->input('content'),
+                'guide_mode' => $request->input('guideMode', 'none'),
+                'guides_visible' => $request->boolean('guidesVisible'),
+                'page_background_color' => $request->input('pageBackgroundColor', '#ffffff'),
+                'page_count' => (int) $request->input('page_count', 0),
+                'version' => DB::raw('version + 1'),
+            ]);
+
+            return response()->json($existing->refresh());
         }
 
         $document = Document::create([
@@ -108,6 +143,15 @@ class DocumentController extends Controller
 
         if ($document->last_autosave_key === $requestId) {
             if (! hash_equals((string) $document->last_autosave_hash, $payloadHash)) {
+                // Etapa 4 monitoring (AUDIT.md "Migrare autosave"): a legitimate
+                // client never reuses a request_id for different content, so this
+                // is either a client bug or a request replayed after a crash mid
+                // in-flight-edit. Worth an operator-visible signal either way.
+                Log::warning('canvas.autosave_idempotency_key_reused', [
+                    'document_id' => $document->id,
+                    'user_id' => auth()->id(),
+                ]);
+
                 return response()->json([
                     'ok' => false,
                     'error' => 'idempotency_key_reused',
@@ -149,6 +193,17 @@ class DocumentController extends Controller
                 abort(404);
             }
 
+            // Etapa 4 monitoring (AUDIT.md "Migrare autosave"): version conflicts
+            // are a normal HTTP response, not an exception, so nothing else logs
+            // them today. A sustained high rate here is exactly the "bake period"
+            // signal the migration plan calls for before further rollout decisions.
+            Log::warning('canvas.autosave_version_conflict', [
+                'document_id' => $document->id,
+                'user_id' => auth()->id(),
+                'client_version' => $version,
+                'current_version' => $current->version,
+            ]);
+
             return response()->json([
                 'ok' => false,
                 'error' => 'version_conflict',
@@ -164,6 +219,95 @@ class DocumentController extends Controller
             'savedAt' => now()->toIso8601String(),
             'idempotentReplay' => false,
         ]);
+    }
+
+    /**
+     * Sibling to autosave(): persists page raster images (JPEG) separately from
+     * the JSON `content`, so the sendBeacon-sized autosave body never carries
+     * base64 image payloads. Mirrors the legacy CanvasApiController::save()
+     * storage convention exactly (`{userId}/documents/{documentId}/pages/{n}.jpg`
+     * on the `tenants` disk) so the existing page_image read action and
+     * thumbnail/gallery code keep working unmodified regardless of which save
+     * path wrote the file.
+     *
+     * This is a partial update: only pages present in the request are touched.
+     * Since TenantStorageTransaction::replaceDirectory() swaps the whole
+     * directory atomically, untouched existing pages are read back and
+     * merged into the write set first, so they aren't dropped.
+     */
+    public function savePages(Request $request, Document $document)
+    {
+        $request->validate([
+            'pages' => ['required', 'array', 'min:1'],
+            'pages.*.page' => ['required', 'integer', 'min:1'],
+            'pages.*.image' => ['required', 'string'],
+        ]);
+
+        $incoming = [];
+        foreach ($request->input('pages') as $page) {
+            $number = (int) ($page['page'] ?? 0);
+            $image = (string) ($page['image'] ?? '');
+            if ($number < 1 || ! preg_match('/^data:image\/jpeg;base64,/', $image)) {
+                continue;
+            }
+            $binary = base64_decode(substr($image, strpos($image, ',') + 1), true);
+            if ($binary === false || $binary === '') {
+                continue;
+            }
+            $incoming[$number] = $binary;
+        }
+
+        if (count($incoming) === 0) {
+            return response()->json(['ok' => false, 'error' => 'No valid page images were provided.'], 422);
+        }
+
+        $baseDir = auth()->id().'/documents/'.$document->id.'/pages';
+        $disk = Storage::disk('tenants');
+
+        $pageFiles = [];
+        if ($disk->directoryExists($baseDir)) {
+            foreach ($disk->files($baseDir) as $existingFile) {
+                $filename = basename($existingFile);
+                $existingNumber = (int) pathinfo($filename, PATHINFO_FILENAME);
+                if (! isset($incoming[$existingNumber])) {
+                    $pageFiles[$filename] = $disk->get($existingFile);
+                }
+            }
+        }
+        foreach ($incoming as $number => $binary) {
+            $pageFiles[$number.'.jpg'] = $binary;
+        }
+
+        $currentTotalExcludingDocument = Document::where('id', '!=', $document->id)->sum('page_count');
+        if ($this->quotas->canvasPagesCapExceeded(auth()->user(), $currentTotalExcludingDocument, count($pageFiles))) {
+            // Etapa 4 monitoring (AUDIT.md "Migrare autosave"): another silent
+            // business response worth a signal — actual storage write failures
+            // already reach Log/OperationalAlert via the default exception handler.
+            Log::info('canvas.autosave_pages_quota_exceeded', [
+                'document_id' => $document->id,
+                'user_id' => auth()->id(),
+            ]);
+
+            return response()->json([
+                'ok' => false,
+                'error' => 'You have reached your plan\'s page limit. Upgrade to Premium for unlimited pages.',
+            ], 402);
+        }
+
+        $pageNumbers = array_map(
+            fn (string $filename) => (int) pathinfo($filename, PATHINFO_FILENAME),
+            array_keys($pageFiles),
+        );
+        sort($pageNumbers);
+
+        $this->storageTransaction->replaceDirectory($baseDir, $pageFiles, function () use ($document, $pageNumbers) {
+            $document->page_count = count($pageNumbers);
+            $document->save();
+
+            return $document;
+        });
+
+        return response()->json(['ok' => true, 'pages' => $pageNumbers]);
     }
 
     private function resolveFolderId(?string $folderId): ?int
