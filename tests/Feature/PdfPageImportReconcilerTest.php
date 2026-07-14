@@ -85,4 +85,19 @@ class PdfPageImportReconcilerTest extends TestCase
         $this->assertSame(1, PdfPageImport::count());
         $this->assertSame($documentA->id, PdfPageImport::first()->document_id);
     }
+
+    public function test_a_pending_lock_with_no_document_yet_is_claimed_on_first_save(): void
+    {
+        $user = User::factory()->create();
+        $this->actingAs($user);
+        $pdf = Pdf::create(['name' => 'Notes.pdf', 'page_count' => 3, 'page_order' => [0, 1, 2], 'uploaded_at' => now()]);
+        // Simulates lockPdfPage(): locked immediately, before any document exists.
+        PdfPageImport::create(['pdf_id' => $pdf->id, 'page_index' => 0, 'document_id' => null]);
+
+        $document = Document::create(['title' => 'Draft']);
+        app(PdfPageImportReconciler::class)->reconcile($document, $this->contentWithPages([[$pdf->id, 0]]));
+
+        $this->assertSame(1, PdfPageImport::count());
+        $this->assertSame($document->id, PdfPageImport::first()->document_id);
+    }
 }

@@ -873,3 +873,24 @@ Codul din repo era deja curat (verificat exhaustiv — tot fluxul de email rezol
 ### Verificare finală
 
 Suită completă: **92 teste, 283 assertions**, verde (+4 față de secțiunea 15 — testele reconcilerului). `npm run build` curat. Toate datele de test (cont Premium temporar, PDF-uri, favorite) șterse după verificare.
+
+## 17. Corectare blocare pagini PDF — sincronizare imediată, nu la salvare (14 iulie 2026, noaptea târziu)
+
+Userul a raportat, după secțiunea 16, că blocarea nu funcționa în practică: „paginile nu se blochează, aduc o pagină și mai pot aduce încă una", plus aceeași cerință pentru Favourites, plus cerința ca descărcarea din Favourites să includă adnotările reale din canvas, nu PDF-ul original needitat.
+
+**Neînțelegere inițială, corectată explicit de user**: primul instinct a fost să interpretez „o singură pagină odată în canvas" ca blocare la nivel de **PDF întreg** (odată ce orice pagină dintr-un PDF e adusă, tot PDF-ul se blochează). Userul a corectat direct: „DOAR ACEA PAGINA ADUSA E BLOCATA, nu tot documentul" — design-ul per-pagină din secțiunea 16 era deja corect ca *domeniu* de blocare; problema reală era alta.
+
+**Cauza reală a bug-ului #1**: `PdfPageImportReconciler::reconcile()` rula abia **după** o salvare reușită de document. Dar `DocumentController::autosave()` refuză explicit să creeze documente noi — actualizează doar unele existente. Un canvas proaspăt, nesalvat niciodată, nu are `document_id` pe server, deci autosave nu face nimic în tăcere până la un salvare explicită. Confirmat live cu Playwright: pagină importată într-un canvas complet nesalvat, așteptare 15 secunde — zero cereri de autosave, deci blocarea (legată de reconciliere) nu se activa niciodată dacă userul nu apăsa explicit Save.
+
+**Fix real**: blocarea devine acum **imediată**, independentă de starea de salvare:
+- Endpoint-uri noi `lock_pdf_page`/`unlock_pdf_page` în `CanvasApiController`, apelate sincron din `insertPdfPages()` **înainte** de randare/inserare (nu după salvare). `lockPdfPage()` respinge cu 409 `already_imported` dacă perechea `(pdf_id, page_index)` e deja blocată; altfel creează un rând cu `document_id => null` (blocare „în așteptare", fără document încă).
+- `PdfPageImportReconciler::reconcile()` actualizat să **revendice** aceste blocări în așteptare la prima salvare reală (`document_id === null` → se actualizează la id-ul documentului), în loc să le trateze ca pe un conflict.
+- `deleteCurrentPage()` deblochează explicit (fire-and-forget) pagina ștearsă dacă avea `sourcePdf` — nu se mai bazează doar pe reconcilierea la salvare.
+- Import direct dintr-un Favourite fără PDF sursă real (upload direct) primește acum `{ skipLock: true }` — evită să trimită id-ul propriu al favoritului către endpoint-ul de blocare (care aștepta un `pdfs.id` real) și evită o violare de cheie străină la salvare.
+- Teste noi `PdfPageLockEndpointTest` (5 cazuri, inclusiv unul care fixează explicit semantica corectă: blocarea paginii 0 nu blochează pagina 1 din același PDF) + test nou în `PdfPageImportReconcilerTest` (blocare în așteptare revendicată la prima salvare).
+
+**Bug conex descoperit în timpul verificării live**: checkbox-ul unei pagini blocate era complet dezactivat (`disabled`), ceea ce împiedica greșit selectarea ei pentru alte acțiuni bulk (Favourite, Delete, Duplicate) care ar trebui să rămână disponibile — blocarea privește strict re-importul în canvas, nu interacțiunea cu pagina. **Fix**: checkbox-ul rămâne mereu selectabil; „select all" include acum și paginile blocate; doar handler-ul acțiunii bulk „Insert into canvas" mai filtrează/sare paginile blocate (cu toast explicativ), neschimbat față de secțiunea 16.
+
+**Verificare end-to-end reală** (Playwright, cont Premium temporar, PDF de test cu 3 pagini): flux complet într-o singură sesiune — import pagină → desen efectiv cu pen tool pe pagina importată → salvare (Ctrl+S) → confirmat în DB că pagina e blocată (`pdf_page_imports`, revendicată de documentul salvat) → checkbox-ul paginii blocate selectabil (nu mai e disabled) → adăugată cu succes la Favourites prin acțiunea bulk, deși blocată → încercarea de a o re-importa prin bulk „Insert into canvas" corect sărită, cu toast → descărcare din Favourites verificată cu `pdf-lib`: PDF cu 1 pagină, conținând un **al doilea XObject imagine cu `SMask`** (canal alpha) de 1282×900 — exact dimensiunile canvas-ului — confirmând că desenul e compus peste pagina originală, nu doar PDF-ul brut needitat.
+
+Suită completă: **98 teste, 300 assertions**, verde (+6 față de secțiunea 16). `npm run build` curat, zero erori consolă în toate verificările live. Cont de test temporar și toate datele asociate (documente, PDF, favorite, director de stocare per-tenant) șterse după verificare.

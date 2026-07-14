@@ -33,7 +33,11 @@ class PdfPageImportReconciler
             $existing = PdfPageImport::where('pdf_id', $pdfId)->where('page_index', $pageIndex)->first();
 
             if ($existing) {
-                if ($existing->document_id !== $document->id) {
+                if ($existing->document_id === null) {
+                    // Claim a lock taken immediately by lockPdfPage() at insert
+                    // time, before this document had ever been saved.
+                    $existing->update(['document_id' => $document->id]);
+                } elseif ($existing->document_id !== $document->id) {
                     Log::info('canvas.pdf_page_import_conflict', [
                         'pdf_id' => $pdfId,
                         'page_index' => $pageIndex,

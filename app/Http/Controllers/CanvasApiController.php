@@ -94,6 +94,8 @@ class CanvasApiController extends Controller
             'page_image' => $this->pageImage($request),
             'pdf_file' => $this->pdfFile($request),
             'favourite_file' => $this->favouriteFile($request),
+            'lock_pdf_page' => $this->lockPdfPage($request),
+            'unlock_pdf_page' => $this->unlockPdfPage($request),
             default => response()->json(['ok' => false, 'error' => 'Unknown action.'], 400),
         };
     }
@@ -512,6 +514,54 @@ class CanvasApiController extends Controller
         return response()->json(['ok' => true, 'items' => $items, 'nextCursor' => $hasMore ? $offset + $limit : null]);
     }
 
+    /**
+     * Locks a PDF page the moment it's inserted into canvas, independent of
+     * whether the document holding it has ever been saved. Background
+     * autosave refuses to create new documents (see DocumentController's
+     * autosave doc comment), so a brand-new, never-saved canvas would never
+     * reach PdfPageImportReconciler otherwise — this endpoint is the fix for
+     * that gap. Locked with document_id null ("pending"); reconcile() claims
+     * it for a real document the first time that document is actually saved.
+     */
+    private function lockPdfPage(Request $request): JsonResponse
+    {
+        $pdf = Pdf::find($request->input('pdf_id'));
+        if (! $pdf) {
+            return response()->json(['ok' => false, 'error' => 'The PDF no longer exists.'], 404);
+        }
+
+        $pageIndex = (int) $request->input('page_index', -1);
+        if ($pageIndex < 0 || $pageIndex >= $pdf->page_count) {
+            return response()->json(['ok' => false, 'error' => 'Invalid page.'], 422);
+        }
+
+        $existing = PdfPageImport::where('pdf_id', $pdf->id)->where('page_index', $pageIndex)->first();
+        if ($existing) {
+            return response()->json(['ok' => false, 'error' => 'already_imported'], 409);
+        }
+
+        PdfPageImport::create(['pdf_id' => $pdf->id, 'page_index' => $pageIndex, 'document_id' => null]);
+
+        return response()->json(['ok' => true]);
+    }
+
+    /**
+     * Releases a lock taken by lockPdfPage() when the page is removed from
+     * canvas again (before or after the document was ever saved).
+     */
+    private function unlockPdfPage(Request $request): JsonResponse
+    {
+        $pdf = Pdf::find($request->input('pdf_id'));
+        if (! $pdf) {
+            return response()->json(['ok' => false, 'error' => 'The PDF no longer exists.'], 404);
+        }
+
+        $pageIndex = (int) $request->input('page_index', -1);
+        PdfPageImport::where('pdf_id', $pdf->id)->where('page_index', $pageIndex)->delete();
+
+        return response()->json(['ok' => true]);
+    }
+
     private function updatePdfPageOrder(Request $request): JsonResponse
     {
         $pdf = Pdf::find($request->input('id'));
@@ -653,15 +703,15 @@ class CanvasApiController extends Controller
         $hasMore = $favourites->count() > $limit;
         $pageOfFavourites = $favourites->take($limit);
 
-        $importedPairs = PdfPageImport::whereIn('pdf_id', $pageOfFavourites->pluck('source_pdf_id')->filter())
-            ->get(['pdf_id', 'page_index'])
-            ->map(fn ($row) => $row->pdf_id.':'.$row->page_index)
-            ->all();
+        $importedByPair = PdfPageImport::whereIn('pdf_id', $pageOfFavourites->pluck('source_pdf_id')->filter())
+            ->get(['pdf_id', 'page_index', 'document_id'])
+            ->keyBy(fn ($row) => $row->pdf_id.':'.$row->page_index);
 
-        $items = $pageOfFavourites->map(function (Favourite $favourite) use ($importedPairs) {
-            $isImported = $favourite->source_pdf_id !== null
-                && $favourite->source_page_index !== null
-                && in_array($favourite->source_pdf_id.':'.$favourite->source_page_index, $importedPairs, true);
+        $items = $pageOfFavourites->map(function (Favourite $favourite) use ($importedByPair) {
+            $pairKey = $favourite->source_pdf_id !== null && $favourite->source_page_index !== null
+                ? $favourite->source_pdf_id.':'.$favourite->source_page_index
+                : null;
+            $importRow = $pairKey ? $importedByPair->get($pairKey) : null;
 
             return [
                 'id' => (string) $favourite->id,
@@ -672,7 +722,11 @@ class CanvasApiController extends Controller
                 'url' => "/canvas/api?action=favourite_file&id={$favourite->id}",
                 'sourcePdfId' => $favourite->source_pdf_id ? (string) $favourite->source_pdf_id : '',
                 'sourcePageIndex' => $favourite->source_page_index,
-                'isImported' => $isImported,
+                'isImported' => $importRow !== null,
+                // The document currently holding the edited/annotated version of
+                // this exact page, if any — lets the client pull in real canvas
+                // edits when downloading, instead of just the original PDF page.
+                'editedDocumentId' => $importRow && $importRow->document_id ? (string) $importRow->document_id : null,
             ];
         })->values();
 

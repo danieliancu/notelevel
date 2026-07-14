@@ -4188,6 +4188,10 @@
 
         async function deleteCurrentPage() {
             const deletedPage = currentPage;
+            const deletedModel = pageModels.get(deletedPage);
+            if (deletedModel && deletedModel.sourcePdf) {
+                unlockPdfPageOnServer(deletedModel.sourcePdf.pdfId, deletedModel.sourcePdf.pageIndex);
+            }
             pages.delete(deletedPage);
             pageImageSizes.delete(deletedPage);
             pageModels.delete(deletedPage);
@@ -7461,30 +7465,107 @@
             return max;
         }
 
-        async function insertPdfPages(pdfId, pdfUrl, pageIndices) {
+        async function lockPdfPageOnServer(pdfId, pageIndex) {
+            const form = new FormData();
+            form.append('action', 'lock_pdf_page');
+            form.append('pdf_id', pdfId);
+            form.append('page_index', String(pageIndex));
+            const response = await fetch('/canvas/api', { method: 'POST', headers: { 'X-CSRF-TOKEN': __csrfToken }, body: form });
+            return response.ok;
+        }
+
+        async function unlockPdfPageOnServer(pdfId, pageIndex) {
+            const form = new FormData();
+            form.append('action', 'unlock_pdf_page');
+            form.append('pdf_id', pdfId);
+            form.append('page_index', String(pageIndex));
+            try {
+                await fetch('/canvas/api', { method: 'POST', headers: { 'X-CSRF-TOKEN': __csrfToken }, body: form });
+            } catch (error) {
+                console.error('unlockPdfPageOnServer failed', error);
+            }
+        }
+
+        async function insertPdfPages(pdfId, pdfUrl, pageIndices, options = {}) {
             if (!window.pdfjsLib) {
                 window.alert('The PDF import engine failed to load.');
                 return;
             }
 
-            const pdfDoc = await pdfjsLib.getDocument(pdfUrl).promise;
+            // Lock each page on the server *before* inserting it, immediately —
+            // not deferred to the next document save. A brand-new, never-saved
+            // canvas has no server-side document yet, so background autosave
+            // (which refuses to create new documents) would never run, and the
+            // page would never actually become locked. This is the fix for that.
+            // `skipLock` is for favourites uploaded directly (no source PDF
+            // library entry to lock against — there's nothing to look up).
+            let lockedIndices = pageIndices;
+            if (!options.skipLock) {
+                lockedIndices = [];
+                let skippedCount = 0;
+                for (const pageIndex of pageIndices) {
+                    const locked = await lockPdfPageOnServer(pdfId, pageIndex);
+                    if (locked) {
+                        lockedIndices.push(pageIndex);
+                    } else {
+                        skippedCount += 1;
+                    }
+                }
+
+                if (skippedCount > 0) {
+                    showCanvasToast(skippedCount === 1
+                        ? 'That page is already in a notebook and was skipped.'
+                        : `${skippedCount} of the selected pages are already in a notebook and were skipped.`);
+                }
+
+                if (lockedIndices.length === 0) {
+                    return;
+                }
+            }
+
+            let pdfDoc;
+            try {
+                pdfDoc = await pdfjsLib.getDocument(pdfUrl).promise;
+            } catch (error) {
+                console.error('insertPdfPages failed to load the PDF', error);
+                if (!options.skipLock) {
+                    for (const pageIndex of lockedIndices) {
+                        await unlockPdfPageOnServer(pdfId, pageIndex);
+                    }
+                }
+                showCanvasToast('Could not open this PDF. Please try again.');
+                return;
+            }
+
             rememberCurrentPage();
 
             let nextPageNumber = highestKnownPageNumber() + 1;
             let firstInserted = null;
-            for (const pageIndex of pageIndices) {
-                const rendered = await renderPdfPageForImport(pdfDoc, pageIndex);
-                const model = createPageModel();
-                model.baseWidth = rendered.baseWidth;
-                model.baseHeight = rendered.baseHeight;
-                model.fallbackImage = rendered.dataUrl;
-                model.sourcePdf = { pdfId, pageIndex };
-                ensureElementIds(model);
-                pageModels.set(nextPageNumber, model);
-                if (firstInserted === null) {
-                    firstInserted = nextPageNumber;
+            for (const pageIndex of lockedIndices) {
+                try {
+                    const rendered = await renderPdfPageForImport(pdfDoc, pageIndex);
+                    const model = createPageModel();
+                    model.baseWidth = rendered.baseWidth;
+                    model.baseHeight = rendered.baseHeight;
+                    model.fallbackImage = rendered.dataUrl;
+                    // Only track sourcePdf (and thus the lock system) for pages
+                    // that came from a real PDF library entry — a favourite
+                    // uploaded directly (skipLock) has no such entry to reference.
+                    if (!options.skipLock) {
+                        model.sourcePdf = { pdfId, pageIndex };
+                    }
+                    ensureElementIds(model);
+                    pageModels.set(nextPageNumber, model);
+                    if (firstInserted === null) {
+                        firstInserted = nextPageNumber;
+                    }
+                    nextPageNumber += 1;
+                } catch (error) {
+                    console.error('insertPdfPages failed for page', pageIndex, error);
+                    if (!options.skipLock) {
+                        await unlockPdfPageOnServer(pdfId, pageIndex);
+                    }
                 }
-                nextPageNumber += 1;
             }
 
             markUnsaved();
@@ -10376,7 +10457,7 @@ return { ok: false, message: (err && err.message) || 'Network error while readin
             card.innerHTML = ''
                 + '<div class="library-pdf-page"><span class="library-pdf-page-status">Loading...</span></div>'
                 + '<div class="library-pdf-name-row">'
-                + `<input type="checkbox" class="library-page-select-checkbox" aria-label="Select ${escapeHtml(label)}"${isSelected ? ' checked' : ''}${isImported ? ' disabled' : ''}>`
+                + `<input type="checkbox" class="library-page-select-checkbox" aria-label="Select ${escapeHtml(label)}"${isSelected ? ' checked' : ''}>`
                 + `<span class="library-pdf-name">${escapeHtml(label)}</span>`
                 + (isFavourited
                     ? '<svg class="library-page-fav-star" viewBox="0 0 24 24" aria-label="In favourites"><path d="M12 3.5l2.47 5.4 5.93.63-4.45 4.02 1.24 5.83L12 16.7l-5.19 2.68 1.24-5.83-4.45-4.02 5.93-.63z" fill="currentColor"/></svg>'
@@ -10393,11 +10474,9 @@ return { ok: false, message: (err && err.message) || 'Network error while readin
                 pageEl.innerHTML = '<span class="library-pdf-page-status">Preview unavailable</span>';
             });
 
-            if (!isImported) {
-                card.querySelector('.library-page-select-checkbox').addEventListener('change', (event) => {
-                    handlers.onToggleSelect(event.target.checked);
-                });
-            }
+            card.querySelector('.library-page-select-checkbox').addEventListener('change', (event) => {
+                handlers.onToggleSelect(event.target.checked);
+            });
 
             return card;
         }
@@ -10423,9 +10502,11 @@ return { ok: false, message: (err && err.message) || 'Network error while readin
 
             const syncSelectAllState = () => {
                 if (!selectAllCheckbox) return;
-                const selectableCount = pageOrder.filter((sourceIndex) => !importedPageIndices.has(sourceIndex)).length;
-                selectAllCheckbox.checked = selectableCount > 0 && selectedSlots.size === selectableCount;
-                selectAllCheckbox.indeterminate = selectedSlots.size > 0 && selectedSlots.size < selectableCount;
+                // Locked pages are still selectable (for favourite/delete/duplicate —
+                // the lock only blocks re-inserting into canvas), so "select all"
+                // counts every page, not just unlocked ones.
+                selectAllCheckbox.checked = pageOrder.length > 0 && selectedSlots.size === pageOrder.length;
+                selectAllCheckbox.indeterminate = selectedSlots.size > 0 && selectedSlots.size < pageOrder.length;
             };
 
             const renderGrid = () => {
@@ -10457,7 +10538,7 @@ return { ok: false, message: (err && err.message) || 'Network error while readin
             if (selectAllCheckbox) {
                 selectAllCheckbox.addEventListener('change', () => {
                     selectedSlots = selectAllCheckbox.checked
-                        ? new Set(pageOrder.map((sourceIndex, slot) => (importedPageIndices.has(sourceIndex) ? -1 : slot)).filter((slot) => slot !== -1))
+                        ? new Set(pageOrder.map((_, slot) => slot))
                         : new Set();
                     renderGrid();
                 });
@@ -10563,7 +10644,7 @@ return { ok: false, message: (err && err.message) || 'Network error while readin
                         const sourceUrl = `/canvas/api?action=pdf_file&id=${encodeURIComponent(item.sourcePdfId)}`;
                         await insertPdfPages(item.sourcePdfId, sourceUrl, [item.sourcePageIndex]);
                     } else {
-                        await insertPdfPages(item.id, item.url, [0]);
+                        await insertPdfPages(item.id, item.url, [0], { skipLock: true });
                     }
                 });
             }
@@ -10580,6 +10661,24 @@ return { ok: false, message: (err && err.message) || 'Network error while readin
             });
 
             return card;
+        }
+
+        async function fetchDocumentContentForEdit(documentId) {
+            try {
+                const response = await fetch(`/canvas/api?action=get_document&id=${encodeURIComponent(documentId)}`, { cache: 'no-store' });
+                if (!response.ok) return null;
+                return await response.json();
+            } catch (error) {
+                console.error('fetchDocumentContentForEdit failed', error);
+                return null;
+            }
+        }
+
+        function findPageWithSourcePdf(content, pdfId, pageIndex) {
+            const pages = Array.isArray(content && content.pages) ? content.pages : [];
+            return pages.find((page) => page.sourcePdf
+                && String(page.sourcePdf.pdfId) === String(pdfId)
+                && page.sourcePdf.pageIndex === pageIndex) || null;
         }
 
         async function downloadSelectedFavouritesAsPdf(selectedFavourites) {
@@ -10606,6 +10705,36 @@ return { ok: false, message: (err && err.message) || 'Network error while readin
                     const sourceDoc = await PDFLib.PDFDocument.load(bytes);
                     const copiedPages = await outDoc.copyPages(sourceDoc, sourceDoc.getPageIndices());
                     copiedPages.forEach((page) => outDoc.addPage(page));
+
+                    // If this favourite's exact source page is currently sitting
+                    // (edited) inside a canvas document, stamp those edits onto
+                    // the page before it's merged in — otherwise the download
+                    // would silently contain the original, un-annotated PDF page.
+                    if (item.editedDocumentId) {
+                        const content = await fetchDocumentContentForEdit(item.editedDocumentId);
+                        const editedPage = content && findPageWithSourcePdf(content, item.sourcePdfId, item.sourcePageIndex);
+                        if (editedPage && Array.isArray(editedPage.elements) && editedPage.elements.length > 0) {
+                            const tempModel = {
+                                baseWidth: editedPage.baseWidth,
+                                baseHeight: editedPage.baseHeight,
+                                elements: editedPage.elements,
+                            };
+                            const overlayDataUrl = renderElementsOnlyToTransparentDataUrl(tempModel);
+                            const overlayBytes = dataUrlToBytes(overlayDataUrl);
+                            const overlayImage = await outDoc.embedPng(overlayBytes);
+                            const rect = pageDisplayRect(tempModel);
+                            const scaleToPdf = 1 / rect.scale;
+                            const size = cssSize();
+                            const outPage = copiedPages[0];
+                            const { height: pageHeightPt } = outPage.getSize();
+                            outPage.drawImage(overlayImage, {
+                                x: -rect.x * scaleToPdf,
+                                y: pageHeightPt - (size.height - rect.y) * scaleToPdf,
+                                width: size.width * scaleToPdf,
+                                height: size.height * scaleToPdf,
+                            });
+                        }
+                    }
                 }
                 const outBytes = await outDoc.save();
                 const blob = new Blob([outBytes], { type: 'application/pdf' });
