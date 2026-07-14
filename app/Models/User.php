@@ -30,6 +30,7 @@ class User extends Authenticatable implements FilamentUser, MustVerifyEmail
         'plan_id',
         'role',
         'ip_address',
+        'email_verified_at',
         'max_canvas_pages_override',
         'max_pdfs_override',
         'ai_monthly_cost_cap_gbp_override',

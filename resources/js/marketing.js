@@ -15,6 +15,40 @@ if (menuToggle && mobileNav) {
   });
 }
 
+const cookieBar = document.getElementById('cookieBar');
+
+if (cookieBar) {
+  const CONSENT_KEY = 'notelevel_cookie_consent';
+  const acceptBtn = document.getElementById('cookieBarAccept');
+  const rejectBtn = document.getElementById('cookieBarReject');
+
+  window.notelevelCookieConsent = () => {
+    try {
+      return localStorage.getItem(CONSENT_KEY);
+    } catch (error) {
+      return null;
+    }
+  };
+
+  const recordChoice = (value) => {
+    try {
+      localStorage.setItem(CONSENT_KEY, value);
+    } catch (error) {
+      // Storage unavailable (private mode etc.) — the bar will simply reappear next visit.
+    }
+    cookieBar.hidden = true;
+    document.body.classList.remove('has-cookie-bar');
+  };
+
+  acceptBtn.addEventListener('click', () => recordChoice('accepted'));
+  rejectBtn.addEventListener('click', () => recordChoice('rejected'));
+
+  if (!window.notelevelCookieConsent()) {
+    cookieBar.hidden = false;
+    document.body.classList.add('has-cookie-bar');
+  }
+}
+
 const a11yWidgetBtn = document.getElementById('a11yWidgetBtn');
 const a11yWidgetPanel = document.getElementById('a11yWidgetPanel');
 

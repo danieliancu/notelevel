@@ -83,7 +83,7 @@ Route::domain(config('domains.marketing'))->group(function () {
 
         Route::middleware(['auth', 'verified'])->group(function () {
             Route::get('/dashboard', function () {
-                return view('canvas.show', ['isDemo' => false]);
+                return view('canvas.show', ['isDemo' => auth()->user()->isGuest()]);
             })->name('dashboard');
         });
 

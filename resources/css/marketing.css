@@ -1257,12 +1257,8 @@ html.a11y-high-contrast *:focus-visible {
   outline-offset: 2px !important;
 }
 
-html.a11y-large-text body {
-  font-size: 112.5%;
-}
-
-html.a11y-large-text .a11y-widget-label {
-  font-size: 16px;
+html.a11y-large-text {
+  zoom: 1.18;
 }
 
 html.a11y-reduce-motion *,
@@ -1288,4 +1284,82 @@ html.a11y-reduce-motion *::after {
 @media (max-width: 600px) {
   .a11y-widget { left: 14px; bottom: 14px; }
   .a11y-widget-panel { width: 210px; }
+}
+
+/* ============ Cookie consent bar (GDPR / ePrivacy) ============ */
+.cookie-bar {
+  position: fixed;
+  left: 0;
+  right: 0;
+  bottom: 0;
+  z-index: 1100;
+  background: var(--color-text-primary);
+  color: #ffffff;
+  box-shadow: 0 -8px 30px rgba(15, 31, 46, 0.18);
+}
+
+.cookie-bar[hidden] { display: none; }
+
+.cookie-bar-inner {
+  max-width: var(--max-width);
+  margin-inline: auto;
+  padding: 16px var(--pad-desktop);
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 20px;
+  flex-wrap: wrap;
+}
+
+.cookie-bar-text {
+  font-size: 13.5px;
+  line-height: 1.5;
+  color: #d7dee1;
+  margin: 0;
+  flex: 1 1 380px;
+}
+
+.cookie-bar-text a {
+  color: #ffffff;
+  text-decoration: underline;
+}
+
+.cookie-bar-actions {
+  display: flex;
+  gap: 10px;
+  flex-shrink: 0;
+}
+
+.cookie-bar-btn {
+  font-family: var(--font-family);
+  font-size: 14px;
+  font-weight: 700;
+  padding: 10px 20px;
+  border-radius: var(--radius-sm);
+  border: 1px solid transparent;
+  cursor: pointer;
+}
+
+.cookie-bar-reject {
+  background: transparent;
+  color: #ffffff;
+  border-color: rgba(255, 255, 255, 0.4);
+}
+
+.cookie-bar-reject:hover { border-color: #ffffff; }
+
+.cookie-bar-accept {
+  background: var(--color-accent);
+  color: #ffffff;
+}
+
+.cookie-bar-accept:hover { background: var(--color-accent-dark); }
+
+body.has-cookie-bar .a11y-widget { bottom: 100px; }
+
+@media (max-width: 600px) {
+  .cookie-bar-inner { padding: 14px var(--pad-mobile); flex-direction: column; align-items: stretch; }
+  .cookie-bar-actions { justify-content: stretch; }
+  .cookie-bar-btn { flex: 1; text-align: center; }
+  body.has-cookie-bar .a11y-widget { bottom: 148px; }
 }

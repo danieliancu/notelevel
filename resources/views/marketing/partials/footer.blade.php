@@ -21,3 +21,5 @@
     </nav>
   </div>
 </footer>
+
+@include('marketing.partials.cookie-consent')
