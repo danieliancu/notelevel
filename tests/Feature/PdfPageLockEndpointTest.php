@@ -83,4 +83,49 @@ class PdfPageLockEndpointTest extends TestCase
         $this->post('/canvas/api', ['action' => 'lock_pdf_page', 'pdf_id' => $pdf->id, 'page_index' => 99])
             ->assertStatus(422);
     }
+
+    public function test_a_page_duplicated_in_page_order_can_be_locked_once_per_occurrence(): void
+    {
+        $user = User::factory()->create();
+        $this->actingAs($user);
+        // Page 1 appears twice in page_order (duplicated in the pages grid).
+        $pdf = Pdf::create(['name' => 'Notes.pdf', 'page_count' => 3, 'page_order' => [0, 1, 1, 2], 'uploaded_at' => now()]);
+
+        $this->post('/canvas/api', ['action' => 'lock_pdf_page', 'pdf_id' => $pdf->id, 'page_index' => 1])
+            ->assertOk();
+        $this->post('/canvas/api', ['action' => 'lock_pdf_page', 'pdf_id' => $pdf->id, 'page_index' => 1])
+            ->assertOk();
+
+        $this->assertSame(2, PdfPageImport::where('page_index', 1)->count());
+    }
+
+    public function test_a_page_duplicated_twice_is_rejected_on_the_third_lock_attempt(): void
+    {
+        $user = User::factory()->create();
+        $this->actingAs($user);
+        $pdf = Pdf::create(['name' => 'Notes.pdf', 'page_count' => 3, 'page_order' => [0, 1, 1, 2], 'uploaded_at' => now()]);
+
+        $this->post('/canvas/api', ['action' => 'lock_pdf_page', 'pdf_id' => $pdf->id, 'page_index' => 1])->assertOk();
+        $this->post('/canvas/api', ['action' => 'lock_pdf_page', 'pdf_id' => $pdf->id, 'page_index' => 1])->assertOk();
+        $this->post('/canvas/api', ['action' => 'lock_pdf_page', 'pdf_id' => $pdf->id, 'page_index' => 1])
+            ->assertStatus(409)
+            ->assertJson(['ok' => false, 'error' => 'already_imported']);
+
+        $this->assertSame(2, PdfPageImport::where('page_index', 1)->count());
+    }
+
+    public function test_unlocking_a_duplicated_page_releases_only_one_occurrence(): void
+    {
+        $user = User::factory()->create();
+        $this->actingAs($user);
+        $pdf = Pdf::create(['name' => 'Notes.pdf', 'page_count' => 3, 'page_order' => [0, 1, 1, 2], 'uploaded_at' => now()]);
+
+        $this->post('/canvas/api', ['action' => 'lock_pdf_page', 'pdf_id' => $pdf->id, 'page_index' => 1])->assertOk();
+        $this->post('/canvas/api', ['action' => 'lock_pdf_page', 'pdf_id' => $pdf->id, 'page_index' => 1])->assertOk();
+
+        $this->post('/canvas/api', ['action' => 'unlock_pdf_page', 'pdf_id' => $pdf->id, 'page_index' => 1])
+            ->assertOk();
+
+        $this->assertSame(1, PdfPageImport::where('page_index', 1)->count());
+    }
 }

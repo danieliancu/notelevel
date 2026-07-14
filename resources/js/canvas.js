@@ -10489,7 +10489,29 @@ return { ok: false, message: (err && err.message) || 'Network error while readin
                 : Array.from({ length: entry.pageCount }, (_, i) => i);
             let selectedSlots = new Set();
             let favouritedPageIndices = new Set();
-            const importedPageIndices = new Set(entry.importedPageIndices || []);
+            // A page duplicated in pageOrder can be imported once per
+            // occurrence — entry.importedPageIndices is a multiset (one
+            // entry per lock), so count occurrences per source page rather
+            // than treating it as a plain set of "locked" indices.
+            const importedCounts = new Map();
+            (entry.importedPageIndices || []).forEach((sourceIndex) => {
+                importedCounts.set(sourceIndex, (importedCounts.get(sourceIndex) || 0) + 1);
+            });
+
+            // Per current pageOrder, which slots are locked — consumes the
+            // multiset in slot order so only as many occurrences as are
+            // actually locked show as locked, leaving the rest importable.
+            const computeSlotLocked = () => {
+                const consumed = new Map();
+                return pageOrder.map((sourceIndex) => {
+                    const used = consumed.get(sourceIndex) || 0;
+                    const locked = used < (importedCounts.get(sourceIndex) || 0);
+                    if (locked) {
+                        consumed.set(sourceIndex, used + 1);
+                    }
+                    return locked;
+                });
+            };
 
             const refreshFavouritedPages = async () => {
                 const { items } = await fetchPdfFavourites();
@@ -10512,6 +10534,7 @@ return { ok: false, message: (err && err.message) || 'Network error while readin
             const renderGrid = () => {
                 list.innerHTML = '';
                 const occurrenceCount = new Map();
+                const slotLocked = computeSlotLocked();
                 pageOrder.forEach((sourceIndex, slot) => {
                     const seen = occurrenceCount.get(sourceIndex) || 0;
                     occurrenceCount.set(sourceIndex, seen + 1);
@@ -10527,7 +10550,7 @@ return { ok: false, message: (err && err.message) || 'Network error while readin
                             }
                             syncSelectAllState();
                         }
-                    }, favouritedPageIndices.has(sourceIndex), importedPageIndices.has(sourceIndex)));
+                    }, favouritedPageIndices.has(sourceIndex), slotLocked[slot]));
                 });
                 if (pageOrder.length === 0) {
                     list.innerHTML = '<p class="library-pdf-status">No pages left in this PDF.</p>';
@@ -10566,8 +10589,9 @@ return { ok: false, message: (err && err.message) || 'Network error while readin
                         });
                         pageOrder = newOrder;
                     } else if (action === 'import') {
-                        const sourceIndices = pageOrder.filter((sourceIndex, slot) => selectedSlots.has(slot) && !importedPageIndices.has(sourceIndex));
-                        const skippedCount = pageOrder.filter((sourceIndex, slot) => selectedSlots.has(slot) && importedPageIndices.has(sourceIndex)).length;
+                        const slotLocked = computeSlotLocked();
+                        const sourceIndices = pageOrder.filter((sourceIndex, slot) => selectedSlots.has(slot) && !slotLocked[slot]);
+                        const skippedCount = pageOrder.filter((sourceIndex, slot) => selectedSlots.has(slot) && slotLocked[slot]).length;
                         if (sourceIndices.length > 0) {
                             await insertPdfPages(entry.id, entry.url, sourceIndices);
                         }
@@ -10847,7 +10871,13 @@ return { ok: false, message: (err && err.message) || 'Network error while readin
             const card = document.createElement('div');
             card.className = 'library-pdf-card' + (libraryPdfSelectedId === entry.id ? ' is-selected' : '');
             const exportDisabled = !window.CANVAS_PDF_EXPORT_ALLOWED;
-            const importedPageIndices = new Set(entry.importedPageIndices || []);
+            // A page duplicated in pageOrder can be imported once per
+            // occurrence — entry.importedPageIndices is a multiset (one
+            // entry per lock), counted per source page below.
+            const importedCounts = new Map();
+            (entry.importedPageIndices || []).forEach((sourceIndex) => {
+                importedCounts.set(sourceIndex, (importedCounts.get(sourceIndex) || 0) + 1);
+            });
             card.innerHTML = ''
                 + '<div class="library-pdf-main">'
                 + '<div class="library-pdf-name-row">'
@@ -10873,39 +10903,59 @@ return { ok: false, message: (err && err.message) || 'Network error while readin
             const prevBtn = card.querySelector('.library-pdf-prev');
             const nextBtn = card.querySelector('.library-pdf-next');
             const importMenuItem = card.querySelector('.library-pdf-import');
-            let pageIndex = Math.max(0, Math.min(entry.pageCount - 1, libraryPdfLastPageIndex.get(entry.id) || 0));
+            // Navigate by slot in pageOrder (not raw PDF page index), so a
+            // duplicated page counts as its own entry in current/total.
+            const pageOrder = Array.isArray(entry.pageOrder) && entry.pageOrder.length > 0
+                ? entry.pageOrder.slice()
+                : Array.from({ length: entry.pageCount }, (_, i) => i);
+            let slot = Math.max(0, Math.min(pageOrder.length - 1, libraryPdfLastPageIndex.get(entry.id) || 0));
+
+            // Which slots are locked, consuming the multiset in slot order —
+            // so only as many occurrences as are actually locked show locked.
+            const slotLocked = (() => {
+                const consumed = new Map();
+                return pageOrder.map((sourceIndex) => {
+                    const used = consumed.get(sourceIndex) || 0;
+                    const locked = used < (importedCounts.get(sourceIndex) || 0);
+                    if (locked) {
+                        consumed.set(sourceIndex, used + 1);
+                    }
+                    return locked;
+                });
+            })();
 
             const updateImportState = () => {
-                const isImported = importedPageIndices.has(pageIndex);
+                const isImported = slotLocked[slot];
                 importMenuItem.disabled = isImported;
                 importMenuItem.textContent = isImported ? 'Already imported' : 'Insert page into canvas';
             };
 
             const updateNavState = () => {
-                prevBtn.disabled = pageIndex <= 0;
-                nextBtn.disabled = pageIndex >= entry.pageCount - 1;
-                label.textContent = `${pageIndex + 1} / ${entry.pageCount}`;
+                prevBtn.disabled = slot <= 0;
+                nextBtn.disabled = slot >= pageOrder.length - 1;
+                label.textContent = `${slot + 1} / ${pageOrder.length}`;
                 updateImportState();
             };
 
             const showPage = async (index) => {
-                pageIndex = Math.max(0, Math.min(entry.pageCount - 1, index));
-                libraryPdfLastPageIndex.set(entry.id, pageIndex);
+                slot = Math.max(0, Math.min(pageOrder.length - 1, index));
+                libraryPdfLastPageIndex.set(entry.id, slot);
                 updateNavState();
-                const requestedIndex = pageIndex;
+                const requestedSlot = slot;
+                const requestedIndex = pageOrder[requestedSlot];
                 pageEl.classList.add('is-loading');
                 try {
                     const dataUrl = await getPdfPageThumbnail(entry, requestedIndex, 220);
-                    if (requestedIndex !== pageIndex) {
+                    if (requestedSlot !== slot) {
                         return;
                     }
                     pageEl.innerHTML = `<img src="${dataUrl}" alt="Page ${requestedIndex + 1}">`;
                 } catch (error) {
-                    if (requestedIndex === pageIndex) {
+                    if (requestedSlot === slot) {
                         pageEl.innerHTML = '<span class="library-pdf-page-status">Preview unavailable</span>';
                     }
                 } finally {
-                    if (requestedIndex === pageIndex) {
+                    if (requestedSlot === slot) {
                         pageEl.classList.remove('is-loading');
                     }
                 }
@@ -10932,18 +10982,19 @@ return { ok: false, message: (err && err.message) || 'Network error while readin
             });
 
             pageEl.addEventListener('click', selectCard);
-            prevBtn.addEventListener('click', (event) => { event.stopPropagation(); selectCard(); showPage(pageIndex - 1); });
-            nextBtn.addEventListener('click', (event) => { event.stopPropagation(); selectCard(); showPage(pageIndex + 1); });
+            prevBtn.addEventListener('click', (event) => { event.stopPropagation(); selectCard(); showPage(slot - 1); });
+            nextBtn.addEventListener('click', (event) => { event.stopPropagation(); selectCard(); showPage(slot + 1); });
             card.querySelector('.library-pdf-eye').addEventListener('click', () => {
                 menu.classList.remove('is-open');
                 goToLibraryPdfView({ mode: 'pages', entry });
             });
             card.querySelector('.library-pdf-import').addEventListener('click', async () => {
                 menu.classList.remove('is-open');
-                if (importedPageIndices.has(pageIndex)) {
+                const sourceIndex = pageOrder[slot];
+                if (slotLocked[slot]) {
                     return;
                 }
-                await insertPdfPages(entry.id, entry.url, [pageIndex]);
+                await insertPdfPages(entry.id, entry.url, [sourceIndex]);
             });
             card.querySelector('.library-pdf-export').addEventListener('click', async () => {
                 menu.classList.remove('is-open');
@@ -10970,7 +11021,7 @@ return { ok: false, message: (err && err.message) || 'Network error while readin
             });
 
             updateNavState();
-            showPage(pageIndex);
+            showPage(slot);
 
             return card;
         }
@@ -10991,7 +11042,6 @@ return { ok: false, message: (err && err.message) || 'Network error while readin
                     + '<option value="duplicate">Duplicate</option>'
                     + '<option value="favourite">Add to favourites</option>'
                     + '</select>'
-                    + `<span class="library-pdf-toolbar-title">${escapeHtml(view.entry.name)}</span>`
                     + '</div>'
                     + '<div class="library-pdf-view-body"></div>';
                 container.querySelector('.library-pdf-back-link').addEventListener('click', () => {
@@ -11022,7 +11072,6 @@ return { ok: false, message: (err && err.message) || 'Network error while readin
                             + '<svg viewBox="0 0 24 24" aria-hidden="true"><path d="M12 5v14M5 12h14"/></svg>'
                             + '<span>New folder</span>'
                             + '</button>'
-                            + '<span class="library-pdf-toolbar-title">Favourites</span>'
                         : '<button type="button" class="library-pdf-import-new library-pdf-delete-folder">'
                             + '<svg viewBox="0 0 24 24" aria-hidden="true"><path d="M3 6h18"/><path d="M8 6V4h8v2"/><path d="M6.5 6l1 14h9l1-14"/><path d="M10 11v5"/><path d="M14 11v5"/></svg>'
                             + '<span>Delete Folder</span>'

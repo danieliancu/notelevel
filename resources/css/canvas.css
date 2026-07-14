@@ -3834,15 +3834,6 @@ color: var(--accent);
   cursor: pointer;
 }
 
-.library-pdf-toolbar-title {
-  font-size: 13px;
-  font-weight: 700;
-  color: var(--text);
-  overflow: hidden;
-  text-overflow: ellipsis;
-  white-space: nowrap;
-}
-
 .library-pdf-bulk-select {
   border: 1px solid var(--border);
   border-radius: 8px;

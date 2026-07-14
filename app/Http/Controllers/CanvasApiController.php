@@ -535,8 +535,12 @@ class CanvasApiController extends Controller
             return response()->json(['ok' => false, 'error' => 'Invalid page.'], 422);
         }
 
-        $existing = PdfPageImport::where('pdf_id', $pdf->id)->where('page_index', $pageIndex)->first();
-        if ($existing) {
+        // A page duplicated in page_order can be imported once per
+        // occurrence — only the specific occurrence being used locks, not
+        // every occurrence of that source page.
+        $occurrences = max(1, collect($pdf->page_order ?? [])->filter(fn ($index) => (int) $index === $pageIndex)->count());
+        $lockedCount = PdfPageImport::where('pdf_id', $pdf->id)->where('page_index', $pageIndex)->count();
+        if ($lockedCount >= $occurrences) {
             return response()->json(['ok' => false, 'error' => 'already_imported'], 409);
         }
 
@@ -546,8 +550,10 @@ class CanvasApiController extends Controller
     }
 
     /**
-     * Releases a lock taken by lockPdfPage() when the page is removed from
-     * canvas again (before or after the document was ever saved).
+     * Releases one lock taken by lockPdfPage() when a page is removed from
+     * canvas again (before or after the document was ever saved). Releases
+     * exactly one occurrence, so a duplicated page's other, still-imported
+     * occurrences stay locked.
      */
     private function unlockPdfPage(Request $request): JsonResponse
     {
@@ -557,7 +563,7 @@ class CanvasApiController extends Controller
         }
 
         $pageIndex = (int) $request->input('page_index', -1);
-        PdfPageImport::where('pdf_id', $pdf->id)->where('page_index', $pageIndex)->delete();
+        PdfPageImport::where('pdf_id', $pdf->id)->where('page_index', $pageIndex)->first()?->delete();
 
         return response()->json(['ok' => true]);
     }
@@ -703,15 +709,31 @@ class CanvasApiController extends Controller
         $hasMore = $favourites->count() > $limit;
         $pageOfFavourites = $favourites->take($limit);
 
-        $importedByPair = PdfPageImport::whereIn('pdf_id', $pageOfFavourites->pluck('source_pdf_id')->filter())
-            ->get(['pdf_id', 'page_index', 'document_id'])
-            ->keyBy(fn ($row) => $row->pdf_id.':'.$row->page_index);
+        $sourcePdfIds = $pageOfFavourites->pluck('source_pdf_id')->filter()->unique()->values();
+        $sourcePdfsById = Pdf::whereIn('id', $sourcePdfIds)->get()->keyBy('id');
 
-        $items = $pageOfFavourites->map(function (Favourite $favourite) use ($importedByPair) {
+        $importRowsByPair = PdfPageImport::whereIn('pdf_id', $sourcePdfIds)
+            ->get(['pdf_id', 'page_index', 'document_id'])
+            ->groupBy(fn ($row) => $row->pdf_id.':'.$row->page_index);
+
+        $items = $pageOfFavourites->map(function (Favourite $favourite) use ($importRowsByPair, $sourcePdfsById) {
             $pairKey = $favourite->source_pdf_id !== null && $favourite->source_page_index !== null
                 ? $favourite->source_pdf_id.':'.$favourite->source_page_index
                 : null;
-            $importRow = $pairKey ? $importedByPair->get($pairKey) : null;
+            $rows = $pairKey ? ($importRowsByPair->get($pairKey) ?? collect()) : collect();
+
+            // A page duplicated in the source PDF locks per occurrence — the
+            // favourite only counts as "already imported" once every
+            // occurrence of that page has been used.
+            $occurrences = 1;
+            $sourcePdf = $favourite->source_pdf_id !== null ? $sourcePdfsById->get($favourite->source_pdf_id) : null;
+            if ($sourcePdf) {
+                $occurrences = max(1, collect($sourcePdf->page_order ?? [])
+                    ->filter(fn ($index) => (int) $index === (int) $favourite->source_page_index)
+                    ->count());
+            }
+
+            $editedRow = $rows->first(fn ($row) => $row->document_id !== null);
 
             return [
                 'id' => (string) $favourite->id,
@@ -722,11 +744,11 @@ class CanvasApiController extends Controller
                 'url' => "/canvas/api?action=favourite_file&id={$favourite->id}",
                 'sourcePdfId' => $favourite->source_pdf_id ? (string) $favourite->source_pdf_id : '',
                 'sourcePageIndex' => $favourite->source_page_index,
-                'isImported' => $importRow !== null,
+                'isImported' => $rows->count() >= $occurrences,
                 // The document currently holding the edited/annotated version of
                 // this exact page, if any — lets the client pull in real canvas
                 // edits when downloading, instead of just the original PDF page.
-                'editedDocumentId' => $importRow && $importRow->document_id ? (string) $importRow->document_id : null,
+                'editedDocumentId' => $editedRow ? (string) $editedRow->document_id : null,
             ];
         })->values();
 

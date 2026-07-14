@@ -100,4 +100,31 @@ class PdfPageImportReconcilerTest extends TestCase
         $this->assertSame(1, PdfPageImport::count());
         $this->assertSame($document->id, PdfPageImport::first()->document_id);
     }
+
+    public function test_a_document_holding_the_same_source_page_twice_gets_two_locks(): void
+    {
+        $user = User::factory()->create();
+        $this->actingAs($user);
+        // Page 1 is duplicated in page_order, so it can back two canvas pages.
+        $pdf = Pdf::create(['name' => 'Notes.pdf', 'page_count' => 3, 'page_order' => [0, 1, 1, 2], 'uploaded_at' => now()]);
+        $document = Document::create(['title' => 'Draft']);
+
+        app(PdfPageImportReconciler::class)->reconcile($document, $this->contentWithPages([[$pdf->id, 1], [$pdf->id, 1]]));
+
+        $this->assertSame(2, PdfPageImport::where('pdf_id', $pdf->id)->where('page_index', 1)->count());
+    }
+
+    public function test_removing_one_of_two_duplicated_pages_releases_only_one_lock(): void
+    {
+        $user = User::factory()->create();
+        $this->actingAs($user);
+        $pdf = Pdf::create(['name' => 'Notes.pdf', 'page_count' => 3, 'page_order' => [0, 1, 1, 2], 'uploaded_at' => now()]);
+        $document = Document::create(['title' => 'Draft']);
+        $reconciler = app(PdfPageImportReconciler::class);
+
+        $reconciler->reconcile($document, $this->contentWithPages([[$pdf->id, 1], [$pdf->id, 1]]));
+        $reconciler->reconcile($document, $this->contentWithPages([[$pdf->id, 1]]));
+
+        $this->assertSame(1, PdfPageImport::where('pdf_id', $pdf->id)->where('page_index', 1)->count());
+    }
 }

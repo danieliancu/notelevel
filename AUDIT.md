@@ -894,3 +894,34 @@ Userul a raportat, după secțiunea 16, că blocarea nu funcționa în practică
 **Verificare end-to-end reală** (Playwright, cont Premium temporar, PDF de test cu 3 pagini): flux complet într-o singură sesiune — import pagină → desen efectiv cu pen tool pe pagina importată → salvare (Ctrl+S) → confirmat în DB că pagina e blocată (`pdf_page_imports`, revendicată de documentul salvat) → checkbox-ul paginii blocate selectabil (nu mai e disabled) → adăugată cu succes la Favourites prin acțiunea bulk, deși blocată → încercarea de a o re-importa prin bulk „Insert into canvas" corect sărită, cu toast → descărcare din Favourites verificată cu `pdf-lib`: PDF cu 1 pagină, conținând un **al doilea XObject imagine cu `SMask`** (canal alpha) de 1282×900 — exact dimensiunile canvas-ului — confirmând că desenul e compus peste pagina originală, nu doar PDF-ul brut needitat.
 
 Suită completă: **98 teste, 300 assertions**, verde (+6 față de secțiunea 16). `npm run build` curat, zero erori consolă în toate verificările live. Cont de test temporar și toate datele asociate (documente, PDF, favorite, director de stocare per-tenant) șterse după verificare.
+
+## 18. Numărare pagini duplicate, ascundere titlu toolbar, blocare per-ocurență la pagini duplicate (14 iulie 2026, noaptea târziu)
+
+Trei cereri mici, ultima fiind un bug real descoperit prin testare live.
+
+### Numărul curent/total include paginile duplicate
+
+Cardul principal al unui PDF (preview cu navigare prev/next) naviga prin `entry.pageCount` (numărul brut de pagini din PDF), nu prin `pageOrder` (care include duplicate create prin acțiunea bulk „Duplicate"). O pagină duplicată nu se reflecta în „X / Y". **Fix**: navigarea (`buildLibraryPdfCard`) folosește acum un `slot` care indexează `pageOrder`, nu pagina brută — „X / Y" reflectă acum lungimea reală a `pageOrder`, inclusiv duplicatele.
+
+### Ascundere `.library-pdf-toolbar-title`
+
+Element cerut eliminat din ambele locuri unde apărea (titlul PDF-ului în vizualizarea de pagini, textul „Favourites" din vizualizarea de favorite) + regula CSS aferentă, acum neutilizată, ștearsă.
+
+### Bug real: blocarea unei pagini duplicate bloca toate ocurențele ei
+
+Userul a raportat: „cand e pagina de pdf e adusa in canvas, trebuie sa fie semnalizata dezactivat DOAR acea pagina, nu toate paginile din pdf". Reprodus direct (Playwright): duplicare pagina 1 → import doar prima ocurență → **ambele** ocurențe („Page 1" și „Page 1 (copy)") apăreau blocate, nu doar cea importată efectiv.
+
+**Cauza**: blocarea era legată strict de `(pdf_id, page_index)` cu constrângere unică — o singură blocare posibilă per pagină sursă, indiferent de câte ori acea pagină apare (prin duplicare) în `pageOrder`. Corect pentru pagini unice, greșit pentru duplicate: toate ocurențele UI ale aceleiași pagini sursă „împărțeau" aceeași blocare.
+
+**Fix — blocare pe bază de ocurență, nu pe bază de pagină unică**:
+- Migrare nouă: eliminată constrângerea unică `(pdf_id, page_index)` de pe `pdf_page_imports` (înlocuită cu index simplu, necesar pentru cheia străină `pdf_id`). Acum sunt permise mai multe rânduri de blocare per pereche, câte una per ocurență efectiv importată.
+- `lockPdfPage()`: compară numărul de blocări existente pentru o pereche cu numărul de ocurențe ale acelei pagini în `pdf.page_order` (numărate live) — respinge cu 409 doar când toate ocurențele sunt deja blocate.
+- `unlockPdfPage()`: eliberează exact **o** ocurență (nu toate), ca restul ocurențelor deja importate să rămână blocate corect.
+- `PdfPageImportReconciler::reconcile()`: rescris să numere ocurențele unei perechi `(pdfId, pageIndex)` în conținutul documentului (nu doar prezența), astfel încât un document care ține aceeași pagină sursă de două ori (două ocurențe duplicate importate separat) capătă exact două blocări, nu una.
+- `listPdfs()`/`listFavourites()` întorc deja, fără nicio modificare necesară, un multiset (array cu duplicate) al paginilor blocate — `pluck()` pe toate rândurile păstrează duplicatele automat odată ce constrângerea unică a fost eliminată.
+- Frontend (`renderLibraryPdfPagesView`, `buildLibraryPdfCard`): grila de pagini și cardul principal consumă acum multisetul de blocări „per-slot", în ordinea `pageOrder` — doar exact atâtea ocurențe câte sunt efectiv blocate apar ca blocate; restul rămân disponibile pentru import.
+- Teste noi: 3 în `PdfPageLockEndpointTest` (blocare/respingere/deblocare per ocurență la o pagină duplicată de două ori), 2 în `PdfPageImportReconcilerTest` (document cu aceeași pagină sursă de două ori → două blocări; eliminarea uneia eliberează doar una).
+
+**Verificare end-to-end reală** (Playwright, cont Premium temporar): upload PDF 3 pagini → duplicare pagina 1 (bulk „Duplicate") → 4 carduri („Page 1", „Page 1 (copy)", „Page 2", „Page 3") → import doar prima ocurență → redeschidere proaspătă a grilei (refetch server) → confirmat: exact 1 card blocat („Page 1"), celelalte 3 (inclusiv copia paginii 1) rămân libere.
+
+Suită completă: **103 teste, 314 assertions**, verde (+5 față de secțiunea 17). `npm run build` curat. Cont de test temporar și toate datele asociate șterse după verificare.
