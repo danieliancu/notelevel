@@ -62,13 +62,13 @@ Blocajul principal de securitate este endpointul legacy `/canvas/api`: ruta acce
 
 ### Distribuția constatărilor
 
-**Actualizat 14 iulie 2026, seara** — include cele 3 constatări noi din verificarea de azi (AUTH-02, LEG-02, OPS-02), toate acum închise sau parțial închise (vezi secțiunea 15). Marea majoritate a constatărilor de mai jos sunt ✅ rezolvate — vezi starea individuală la fiecare constatare și roadmap-ul din secțiunea 8 pentru ce mai e deschis efectiv.
+**Actualizat 14 iulie 2026, noaptea** — include cele 4 constatări noi din verificarea de azi (AUTH-02, LEG-02, OPS-02, WEB-02), aproape toate acum închise (vezi secțiunea 15). Marea majoritate a constatărilor de mai jos sunt ✅ rezolvate — vezi starea individuală la fiecare constatare și roadmap-ul din secțiunea 8 pentru ce mai e deschis efectiv.
 
 | Severitate | Număr total | Din care încă deschise | Semnificație |
 |---|---:|---:|---|
 | Critic | 1 | 0 | Poate produce pierdere de date sau compromitere semnificativă; blochează lansarea |
 | Ridicat | 8 | 0 | Impact major sau probabilitate relevantă; necesită remediere înainte de producție |
-| Mediu | 10 | 3 (TEN-01, PERF-01, UX-01 parțial — validare NVDA/VoiceOver rămasă) | Reduce robustețea, securitatea în profunzime sau calitatea produsului |
+| Mediu | 11 | 3 (TEN-01, PERF-01, UX-01 — accesibilitatea canvasului rămâne integral neatinsă, decizie asumată de user) | Reduce robustețea, securitatea în profunzime sau calitatea produsului |
 | Scăzut | 4 | 3 (OBS-01 parțial, ARC-01, DOC-01) | Datorie tehnică ori îmbunătățire cu impact limitat |
 
 **Notă de rigoare**: LEG-02 și OPS-02 sunt marcate rezolvate pe baza confirmării explicite a userului, nu a unei re-verificări independente de cod/infrastructură din partea acestui audit (vezi detalii la fiecare constatare, secțiunea 4).
@@ -326,16 +326,30 @@ Absența advisory-urilor nu demonstrează securitatea codului propriu și nu red
 ### UX-01 — Accesibilitatea canvasului nu este demonstrată
 
 **Severitate:** Mediu  
-**Stare:** Parțial rezolvată 14 iulie 2026 — vezi secțiunea 15; **validarea finală cu NVDA/VoiceOver de către un om rămâne deschisă**  
+**Stare:** Confirmată, **rămâne deschisă — deciziune explicită a userului**  
 **Domeniu:** UX, accesibilitate
 
-**Dovadă (problema originală):** canvasul construiește numeroase controale, meniuri, panouri, selecții și dialoguri manual în `resources/js/canvas.js`. Există etichete ARIA punctuale, dar nu exista niciun panou dedicat de accesibilitate și nu exista niciun test automat de accesibilitate.
+**Dovadă:** canvasul construiește numeroase controale, meniuri, panouri, selecții și dialoguri manual în `resources/js/canvas.js`. Există etichete ARIA punctuale, dar nu există panou dedicat de accesibilitate și nu există teste automate de accesibilitate.
 
 **Impact:** focus trapping, ordine de tab, anunțarea erorilor, operarea fără pointer și contrastul pot eșua în fluxurile centrale.
 
-**Ce s-a construit azi:** panou de accesibilitate dedicat, reversibil prin buton propriu în toolbar (contrast mare real prin variabile CSS, text mărit pentru interfață, reducere mișcare care respectă și `prefers-reduced-motion` la nivel de SO, listă de shortcuts reale din aplicație). Testat automat: navigare completă din tastatură (Tab/Enter), `aria-expanded` corect, Escape închide panoul, preferințele persistă. Detalii complete în secțiunea 15.
+**Decizie 14 iulie 2026 (seara):** un panou de accesibilitate fusese construit inițial în canvas (vezi prima versiune a secțiunii 15), dar userul a decis explicit să renunțe la el acolo — "acolo oricum customizezi tu, faci cum vrei tu" — și a redirecționat efortul către homepage și blog în schimb (vezi WEB-02, constatare nouă mai jos, secțiunea 15 actualizată). Codul din `resources/views/canvas/show.blade.php`, `resources/js/canvas.js` și `resources/css/canvas.css` a fost repus la starea dinainte de acel panou.
 
-**Ce rămâne:** validarea manuală reală cu NVDA/VoiceOver — userul a spus explicit că o face separat. Până atunci, criteriul de verificare de mai jos nu e bifat integral.
+**Remediere:** audit WCAG 2.2 AA cu tastatură, NVDA/VoiceOver și axe, direct pe canvas; definește componente accesibile reutilizabile pentru dialog, menu, tabs și live regions. **Rămâne integral deschisă, asumat de user.**
+
+**Criteriu de verificare:** toate fluxurile principale ale canvasului sunt complet operabile din tastatură, fără încălcări axe serioase și cu focus vizibil/restaurat.
+
+### WEB-02 — Nicio opțiune de accesibilitate vizibilă pe paginile publice (nou, 14 iulie 2026) — ✅ Rezolvat 14 iulie 2026
+
+**Severitate:** Mediu  
+**Stare:** ✅ Rezolvată  
+**Domeniu:** UX, accesibilitate, marketing
+
+**Dovadă (problema originală):** homepage-ul și blog-ul (paginile pe care le vede orice vizitator, inclusiv înainte de a crea cont) nu ofereau nicio opțiune vizibilă de accesibilitate — niciun control de contrast, mărime text sau reducere mișcare, în ciuda unui hero cu carusel animat.
+
+**Remediere aplicată:** widget flotant de accesibilitate (`marketing/partials/accessibility-widget.blade.php`), buton rotund jos-stânga cu pictograma universală de accesibilitate, prezent **doar pe homepage și blog** (nu pe `/contact` sau paginile legale — scop limitat explicit de user). Panou cu 3 comutatoare reale: contrast mare (prin variabilele CSS din `marketing.css`), text mărit, reducere mișcare (plus `@media (prefers-reduced-motion: reduce)` independent de toggle). Preferințe persistate în `localStorage`.
+
+**Verificare** (Playwright, browser real): widget prezent pe `/` și `/blog`, absent pe `/contact` și `/privacy` — confirmat automat; cele 3 comutatoare aplică efectiv clasele pe `<html>`; Escape închide panoul; preferințele supraviețuiesc unui reload; zero erori în consolă.
 
 **Criteriu de verificare:** toate fluxurile principale sunt complet operabile din tastatură, fără încălcări axe serioase și cu focus vizibil/restaurat — **verificat automat pentru panoul de accesibilitate; restul canvasului nerevalidat cu cititor de ecran real.**
 
@@ -510,14 +524,15 @@ Aceste elemente nu sunt prezentate automat ca vulnerabilități:
 
 **Rezolvate azi:**
 1. ✅ **Rate limiting la `/register`** (AUTH-02) — `throttle:6,1` adăugat, test automat verde.
-2. ✅ **Buton dedicat de accesibilitate în canvas** — vezi secțiunea 15, nou adăugată. Validarea finală cu NVDA/VoiceOver rămâne să fie făcută manual de user, dar infrastructura (contrast real, text mărit, reducere mișcare, listă de shortcuts, focus vizibil, navigare completă din tastatură) e pregătită și testată automat (Playwright).
+2. ✅ **Widget de accesibilitate pe homepage + blog** (WEB-02) — vezi secțiunea 15. Construit inițial în canvas, apoi **mutat explicit** pe paginile publice la cererea userului; canvas-ul a rămas neschimbat (UX-01 rămâne deschisă acolo, deciziune asumată). Testat automat (Playwright): prezent doar pe `/` și `/blog`, absent pe `/contact`/`/privacy`.
 
 **Planificate pentru viitor — neurgente, asumate explicit de user:**
 3. **Zoom pe canvas** — neimplementat. Fără impact de securitate/date; pur funcțional.
-4. **Criptare completă a conținutului utilizatorilor** ("nimeni să nu poată vedea ce e acolo") — neimplementat; fișierele din discul `tenants` sunt stocate în clar. Efort estimat: 1-3 săptămâni, risc real (vezi discuția separată din sesiune — cheia de criptare pierdută = date irecuperabile). Recomandare păstrată: **backup înainte de criptare**, nu invers.
-5. **Backup configurat** — tot neimplementat (nici `spatie/laravel-backup`, nici `SoftDeletes` pe modelele cu conținut). Efort estimat: o jumătate de zi, risc zero (operațiune pur adăugată). Recomandare: prioritizează asta înaintea criptării, exact pentru că protejează împotriva eșecurilor viitoare, inclusiv ale criptării înseși.
+4. **Accesibilitatea canvasului** (UX-01) — rămâne integral deschisă; userul gestionează separat customizarea acelei zone.
+5. **Criptare completă a conținutului utilizatorilor** ("nimeni să nu poată vedea ce e acolo") — neimplementat; fișierele din discul `tenants` sunt stocate în clar. Efort estimat: 1-3 săptămâni, risc real (vezi discuția separată din sesiune — cheia de criptare pierdută = date irecuperabile). Recomandare păstrată: **backup înainte de criptare**, nu invers.
+6. **Backup configurat** — tot neimplementat (nici `spatie/laravel-backup`, nici `SoftDeletes` pe modelele cu conținut). Efort estimat: o jumătate de zi, risc zero (operațiune pur adăugată). Recomandare: prioritizează asta înaintea criptării, exact pentru că protejează împotriva eșecurilor viitoare, inclusiv ale criptării înseși.
 
-Niciuna dintre cele două de mai sus nu blochează lansarea din perspectiva acestui audit — sunt asumate explicit de user ca fiind de făcut ulterior, nu ca riscuri ignorate.
+Niciunul dintre punctele 3-6 de mai sus nu blochează lansarea din perspectiva acestui audit — sunt asumate explicit de user ca fiind de făcut ulterior, nu ca riscuri ignorate.
 
 ### Quick wins
 
@@ -795,30 +810,27 @@ Suită completă: **84 teste, 267 assertions**, verde. `npm run build` curat. To
 - `routes/auth.php`: `POST register` are acum `throttle:6,1`, identic cu limiterul deja folosit la `verification.send`/`verification.verify`.
 - Test nou `RegistrationTest::test_registration_is_rate_limited` — confirmă `429` după 6 înregistrări de pe același „client" de test.
 
-### UX-01 — panou dedicat de accesibilitate în canvas
+### UX-01 / WEB-02 — panou de accesibilitate: construit în canvas, apoi mutat pe homepage + blog
 
-**Cerință**: buton separat și specific pentru accesibilitate, pregătit după best practice W3C/WCAG și Google (Lighthouse), userul urmând să valideze separat cu un cititor de ecran real.
+**Cerință inițială**: buton separat și specific pentru accesibilitate, pregătit după best practice W3C/WCAG și Google (Lighthouse).
 
-**Ce s-a construit** (`resources/views/canvas/show.blade.php`, `resources/js/canvas.js`, `resources/css/canvas.css`):
-- Buton nou în toolbar, `#accessibilityBtn` (pictogramă universală de accesibilitate), lângă butonul de Settings — etichetă `aria-label="Accessibility options"`, `aria-expanded`/`aria-controls` corecte, integrat în infrastructura existentă de meniuri toolbar (aceeași funcție `toggleToolbarMenu` folosită de toate celelalte meniuri — moștenește gratuit: închidere la click în afară, închidere la `Escape`, poziționare automată, focus vizibil).
-- Panou cu 3 comutatoare **reale**, nu decorative:
-  - **High contrast** — schimbă variabilele CSS de bază (`--text`, `--border`, `--panel` etc.) în valori cu contrast maxim (negru pe alb), plus un inel de focus galben de 3px foarte vizibil pe orice element focusat.
-  - **Larger text** — mărește fontul și dimensiunea butoanelor din meniuri/toolbar/chat (nu afectează conținutul desenat de utilizator pe canvas, care are propriul control de mărime text, deja existent).
-  - **Reduce motion** — dezactivă animațiile/tranzițiile; respectă și `prefers-reduced-motion` la nivel de sistem de operare printr-un `@media` separat, activ indiferent dacă utilizatorul a deschis vreodată panoul (bifează un criteriu explicit verificat de Lighthouse/Google).
-- Listă de scurtături de tastatură **reale**, extrase din codul existent (nu inventate): `Ctrl/⌘+S` (salvare), `Ctrl/⌘+Z` (undo), `Ctrl/⌘+Shift+Z` (redo), `Ctrl/⌘+O` (bibliotecă), plus `Tab`/`Esc`.
-- Preferințele se salvează în `localStorage` (`fixbly.a11y`) și se aplică automat la reîncărcarea paginii.
-- **De ce nu are focus trap propriu-zis**: panoul e un meniu de tip „disclosure" (dropdown ancorat de un buton), la fel ca toate celelalte 8 meniuri din toolbar — conform ARIA Authoring Practices, acest tip de widget nu necesită capturarea focusului (asta e cerută doar pentru dialoguri modale adevărate); Tab poate continua natural spre restul interfeței, iar meniul se închide la `Escape` sau click în afară. Comportament identic, intenționat, cu meniurile Settings/AI deja existente.
+**Prima versiune (abandonată)**: panou construit în `resources/views/canvas/show.blade.php`/`canvas.js`/`canvas.css`, integrat în infrastructura de meniuri toolbar a canvasului. Funcțional, testat cu Playwright — dar **userul a decis explicit să renunțe la el în canvas** ("acolo oricum customizezi tu, faci cum vrei tu") și să mute efortul pe paginile publice. Codul din cele 3 fișiere a fost repus exact la starea dinainte (`git checkout` din commitul anterior), deci canvas-ul e neschimbat față de dinaintea acestei sesiuni. UX-01 (accesibilitatea canvasului) **rămâne deschisă**, ca decizie asumată.
 
-**Verificare** (Playwright, browser real, nu doar citire de cod):
-- Deschidere cu mouse și cu tastatură (`Tab` până la buton + `Enter`) — ambele funcționează, `aria-expanded` se actualizează corect.
-- Toate cele 3 comutatoare aplică efectiv clasele CSS (`a11y-high-contrast a11y-large-text a11y-reduce-motion` pe `<html>`) — confirmat prin citirea `document.documentElement.className`.
-- Preferințele supraviețuiesc unui `reload` complet al paginii.
-- `Escape` închide panoul.
-- Zero erori în consola browserului.
-- Captură de ecran confirmă vizual: contrast alb-negru real, buton activ evidențiat, panou lizibil.
+**Versiune finală, livrată** — widget de accesibilitate pe **homepage și blog, exclusiv** (nu pe `/contact`, nu pe paginile legale — scop limitat explicit):
+- Partial nou, `resources/views/marketing/partials/accessibility-widget.blade.php`, inclus explicit doar în `marketing/home.blade.php`, `blog/index.blade.php`, `blog/show.blade.php` (nu în header/footer comun, ca să nu apară automat pe `/contact`/`/privacy`/`/terms`, care folosesc aceleași partial-uri de header/footer).
+- Buton rotund flotant, jos-stânga, cu pictograma universală de accesibilitate (omulețul cu cerc pentru cap, aceeași siglă clasică cerută).
+- Panou cu aceleași 3 comutatoare reale ca în versiunea de canvas — **high contrast** (prin variabilele CSS din `marketing.css`: `--color-text-primary`, `--color-border`, etc.), **larger text**, **reduce motion** (plus `@media (prefers-reduced-motion: reduce)` independent de toggle, cerut de Lighthouse/Google).
+- Logică JS în `resources/js/marketing.js`, urmând pattern-ul defensiv deja folosit în acel fișier (`if (element) { ... }`) — nu rupe nimic pe paginile unde widget-ul nu există.
+- Preferințe persistate în `localStorage` (`notelevel.a11y`).
 
-**Ce rămâne, explicit deschis:** validarea finală cu NVDA/VoiceOver — userul a confirmat că o face separat. Restul canvasului (dincolo de acest panou nou) nu a fost re-auditat cu cititor de ecran real; UX-01 rămâne parțial deschisă până la acea validare.
+**Verificare** (Playwright, browser real):
+- Widget prezent pe `/` și `/blog` — confirmat automat.
+- Widget **absent** pe `/contact` și `/privacy` — confirmat automat (exact scopul cerut).
+- Cele 3 comutatoare aplică efectiv clasele pe `<html>`; `Escape` închide panoul; preferințele supraviețuiesc unui `reload`; zero erori în consolă.
+- Captură de ecran confirmă vizual: buton teal jos-stânga, panou lizibil cu cele 3 comutatoare.
+
+**Ce rămâne deschis, explicit:** accesibilitatea canvasului (UX-01) — asumată de user ca fiind gestionată separat, nu prin acest widget.
 
 ### Verificare finală
 
-Suită completă: **85 teste, 268 assertions**, verde (+1 față de secțiunea 14 — testul de throttling). `npm run build` curat.
+Suită completă: **85 teste, 268 assertions**, verde (neschimbată — widget-ul de pe homepage/blog nu are teste PHPUnit dedicate, fiind verificat prin browser real/Playwright). `npm run build` curat.

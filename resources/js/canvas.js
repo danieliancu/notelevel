@@ -48,7 +48,6 @@
         const insertBtn = document.getElementById('insertBtn');
         const selectBtn = document.getElementById('selectBtn');
         const settingsBtn = document.getElementById('settingsBtn');
-        const accessibilityBtn = document.getElementById('accessibilityBtn');
         const aiBtn = document.getElementById('aiBtn');
         const moreBtn = document.getElementById('moreBtn');
         const pendingMoreBtn = document.getElementById('pendingMoreBtn');
@@ -57,13 +56,12 @@
         const eraserMenu = document.getElementById('eraserMenu');
         const insertMenu = document.getElementById('insertMenu');
         const settingsMenu = document.getElementById('settingsMenu');
-        const accessibilityMenu = document.getElementById('accessibilityMenu');
         const aiMenu = document.getElementById('aiMenu');
         const overflowMenu = document.getElementById('overflowMenu');
         const pendingActionsMenu = document.getElementById('pendingActionsMenu');
-        const toolbarMenus = [fileMenu, penMenu, eraserMenu, insertMenu, settingsMenu, accessibilityMenu, aiMenu, overflowMenu, pendingActionsMenu];
-        const toolbarMenuButtons = [newBtn, undoBtn, redoBtn, penBtn, eraserBtn, insertBtn, aiBtn, selectBtn, settingsBtn, accessibilityBtn, moreBtn, pendingMoreBtn];
-        const toolbarOverflowButtons = [newBtn, undoBtn, redoBtn, penBtn, eraserBtn, insertBtn, selectBtn, aiBtn, settingsBtn, accessibilityBtn]
+        const toolbarMenus = [fileMenu, penMenu, eraserMenu, insertMenu, settingsMenu, aiMenu, overflowMenu, pendingActionsMenu];
+        const toolbarMenuButtons = [newBtn, undoBtn, redoBtn, penBtn, eraserBtn, insertBtn, aiBtn, selectBtn, settingsBtn, moreBtn, pendingMoreBtn];
+        const toolbarOverflowButtons = [newBtn, undoBtn, redoBtn, penBtn, eraserBtn, insertBtn, selectBtn, aiBtn, settingsBtn]
             .concat(Array.from(document.querySelectorAll('.toolbar > .pending-action-icon')));
         const pendingActionButtons = Array.from(document.querySelectorAll('.toolbar > .pending-action-icon'));
         const perfectShapeMenuBtn = document.getElementById('perfectShapeMenuBtn');
@@ -9142,58 +9140,6 @@ return { ok: false, message: (err && err.message) || 'Network error while readin
             event.stopPropagation();
             toggleToolbarMenu(settingsBtn, settingsMenu, { transient: true });
         });
-        accessibilityBtn.addEventListener('click', (event) => {
-            event.stopPropagation();
-            toggleToolbarMenu(accessibilityBtn, accessibilityMenu, { transient: true });
-        });
-
-        const a11yHighContrastToggle = document.getElementById('a11yHighContrastToggle');
-        const a11yLargeTextToggle = document.getElementById('a11yLargeTextToggle');
-        const a11yReduceMotionToggle = document.getElementById('a11yReduceMotionToggle');
-
-        function applyA11yClass(className, enabled) {
-            document.documentElement.classList.toggle(className, enabled);
-        }
-
-        function saveA11yPreferences() {
-            localStorage.setItem('fixbly.a11y', JSON.stringify({
-                highContrast: a11yHighContrastToggle.checked,
-                largeText: a11yLargeTextToggle.checked,
-                reduceMotion: a11yReduceMotionToggle.checked
-            }));
-        }
-
-        function loadA11yPreferences() {
-            let prefs = {};
-            try {
-                prefs = JSON.parse(localStorage.getItem('fixbly.a11y') || '{}');
-            } catch (error) {
-                prefs = {};
-            }
-            const systemReducedMotion = Boolean(window.matchMedia && window.matchMedia('(prefers-reduced-motion: reduce)').matches);
-            a11yHighContrastToggle.checked = Boolean(prefs.highContrast);
-            a11yLargeTextToggle.checked = Boolean(prefs.largeText);
-            a11yReduceMotionToggle.checked = typeof prefs.reduceMotion === 'boolean' ? prefs.reduceMotion : systemReducedMotion;
-            applyA11yClass('a11y-high-contrast', a11yHighContrastToggle.checked);
-            applyA11yClass('a11y-large-text', a11yLargeTextToggle.checked);
-            applyA11yClass('a11y-reduce-motion', a11yReduceMotionToggle.checked);
-        }
-
-        a11yHighContrastToggle.addEventListener('change', () => {
-            applyA11yClass('a11y-high-contrast', a11yHighContrastToggle.checked);
-            saveA11yPreferences();
-        });
-        a11yLargeTextToggle.addEventListener('change', () => {
-            applyA11yClass('a11y-large-text', a11yLargeTextToggle.checked);
-            saveA11yPreferences();
-        });
-        a11yReduceMotionToggle.addEventListener('change', () => {
-            applyA11yClass('a11y-reduce-motion', a11yReduceMotionToggle.checked);
-            saveA11yPreferences();
-        });
-
-        loadA11yPreferences();
-
         aiBtn.addEventListener('click', (event) => {
             event.stopPropagation();
             toggleToolbarMenu(aiBtn, aiMenu);

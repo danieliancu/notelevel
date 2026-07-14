@@ -58,6 +58,7 @@
 </main>
 
 @include('marketing.partials.footer')
+@include('marketing.partials.accessibility-widget')
 
 </body>
 </html>
