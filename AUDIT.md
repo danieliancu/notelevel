@@ -834,3 +834,42 @@ Suită completă: **84 teste, 267 assertions**, verde. `npm run build` curat. To
 ### Verificare finală
 
 Suită completă: **85 teste, 268 assertions**, verde (neschimbată — widget-ul de pe homepage/blog nu are teste PHPUnit dedicate, fiind verificat prin browser real/Playwright). `npm run build` curat.
+
+## 16. Download PDF pe producție, curățare branding, blocare re-import PDF, download grupat Favourites (14 iulie 2026, noaptea)
+
+Patru cereri distincte, planificate explicit (agenți Explore + Plan în paralel) înainte de implementare — plan salvat, aprobat, apoi executat integral.
+
+### Download PDF nu mergea pe producție
+
+**Ipoteza inițială (din plan) era parțial greșită — corectată după test real cu userul.** Planul inițial suspecta o problemă de sesiune/proxy (`trustProxies` lipsă). Fix-urile de robustețe din acel plan (verificare `response.ok`, `trustProxies`) au fost aplicate oricum — utile, dar nu erau cauza reală. **Cauza reală**, descoperită abia după ce userul a testat fix-ul de gestionare a erorilor (care, exact cum era intenționat, a scos la iveală eroarea în loc s-o înghită silențios): `exportDocumentAsPdf()` compunea imaginea cu adnotările desenate peste pagina PDF folosind `fetch(overlayDataUrl)`, unde `overlayDataUrl` e un `data:` URI generat de `canvas.toDataURL()`. Browserele tratează `fetch()` pe un `data:` URI ca pe o cerere de rețea supusă `connect-src` din CSP — iar politica din `SecurityHeaders.php` are `connect-src 'self'` (fără `data:`), deci Chrome bloca acel fetch cu exact eroarea raportată: *„Refused to connect because it violates the document's Content Security Policy."* Descărcarea din Favourites mergea pentru că acel flux nu compune nicio adnotare, deci nu avea niciun `fetch()` pe `data:`.
+
+**Fix real**: `dataUrlToBytes()`, helper nou care decodează base64 direct din JS (`atob` + `Uint8Array`), fără niciun `fetch()` — deci nicio verificare CSP implicată. Înlocuiește `await (await fetch(overlayDataUrl)).arrayBuffer()` din `exportDocumentAsPdf()`.
+
+**Fix-uri de robustețe păstrate din planul inițial** (nu erau cauza, dar rămân utile): `getPdfSourceBytes()` verifică acum `response.ok` și curăță cache-ul la eșec; `exportDocumentAsPdf()` prinde orice eroare rămasă și afișează un toast (`showCanvasToast()`); `bootstrap/app.php` are acum `trustProxies(at: '*')`, care lipsea complet și e oricum o bună practică pentru Forge.
+
+**Verificare end-to-end reală** (Playwright, cont Premium, PDF de test cu 3 pagini, desen efectiv cu pen tool pe pagina importată — exact fluxul care declanșa compoziția adnotării): descărcare PDF adnotat reușită (`test (annotated).pdf`), verificat cu `pdf-lib` că are cele 3 pagini corecte, **zero violări CSP, zero erori consolă**.
+
+**Lecție notabilă**: ipoteza inițială din plan (bazată pe cod citit, nu pe testare live) a fost o pistă rezonabilă dar incorectă — abia fix-ul „fă eroarea vizibilă" (nu presupune cauza) a permis identificarea cauzei reale în câteva minute, în loc să continuăm să ghicim.
+
+### Branding „Laravel" în comunicări
+
+Codul din repo era deja curat (verificat exhaustiv — tot fluxul de email rezolvă prin `config('app.name')`). Curățenie găsită și aplicată: `resources/views/welcome.blade.php` (pagina Laravel de start, cod mort, nicio rută nu duce la ea) — ștearsă. `.env.example` — `APP_NAME=Laravel` → `APP_NAME=Notelevel`. Cauza reală probabilă rămâne la nivel de producție (`config:cache` vechi sau `.env` neactualizat pe Forge) — checklist dat userului în planul de sesiune.
+
+### Blocarea unei pagini PDF după import (cu deblocare automată la ștergere)
+
+- Migrare nouă `pdf_page_imports` (`pdf_id`, `page_index`, `document_id` nullable, unique pe `pdf_id`+`page_index`, `cascadeOnDelete()` pe ambele FK).
+- Serviciu nou `PdfPageImportReconciler::reconcile()` — apelat după fiecare salvare reușită de document (`DocumentController::store/update/autosave`, `CanvasApiController::save()` legacy). Recalculează automat ce perechi `(pdfId, pageIndex)` există în conținutul curent și sincronizează tabelul — inserează ce-i nou, șterge ce-a dispărut. Rezolvă simultan blocarea la import ȘI deblocarea la ștergere a paginii/documentului, fără cod separat pentru fiecare caz. Cazul de conflict (două documente revendică aceeași pagină, ex. prin duplicare document) e gestionat fără eroare — nu fură blocarea, doar loghează.
+- `listPdfs()`/`listFavourites()` (legacy API) extinse cu `importedPageIndices`/`isImported`, calculate cu query batch (fără N+1).
+- Frontend: paginile deja importate apar vizual estompate, cu iconiță de lacăt, checkbox dezactivat, în grila de pagini PDF, în cardul principal al PDF-ului (recalculat la navigare prev/next) și în Favourites (verificat prin `sourcePdfId`/`sourcePageIndex`, nu prin id-ul propriu al favoritului). Corectat pe parcurs: importul dintr-un Favourite folosește acum identitatea PDF-ului original (nu id-ul favoritului), altfel constrângerea de cheie străină ar fi eșuat și blocarea nu s-ar fi unificat corect între cele două căi de import.
+- **Verificare end-to-end reală** (Playwright, cont Premium temporar, PDF de test generat cu `pdf-lib`): upload PDF cu 3 pagini → import pagina 1 → salvare explicită (Ctrl+S) → confirmat direct în baza de date (`pdf_page_imports` are rândul) → confirmat vizual: pagina 1 estompată, cu lacăt, checkbox dezactivat; paginile 2-3 normale, selectabile. Bulk „select all" exclude corect paginile blocate.
+- Teste noi `PdfPageImportReconcilerTest` (4 cazuri: creare, deblocare la ștergere pagină, deblocare la ștergere document prin cascade, conflict fără furt de blocare).
+
+### Download grupat din Favourites (Premium)
+
+- Checkbox multi-select adăugat în panoul Favourites (identic vizual cu cel deja existent la grila de pagini PDF), plus dropdown „Bulk action..." cu „Download selected" (Premium, gated de același `CANVAS_PDF_EXPORT_ALLOWED`) și „Delete selected" (bonus).
+- `downloadSelectedFavouritesAsPdf()` — client-side, PDFLib, fără niciun endpoint nou pe backend: descarcă fiecare favorite selectat, combină toate paginile lor (`copyPages(sourceDoc, sourceDoc.getPageIndices())` — nu presupune un singur page per favorite) într-un singur document, declanșează un singur download.
+- **Verificare end-to-end reală**: 2 pagini adăugate la Favourites, selectate ambele + alte 2 rămase din rulări anterioare de test (4 total), descărcare grupată → fișier `favourites.pdf` descărcat, verificat cu `pdf-lib` că are exact 4 pagini (numărul corect de favorite selectate) — confirmă fuziunea corectă a mai multor surse.
+
+### Verificare finală
+
+Suită completă: **92 teste, 283 assertions**, verde (+4 față de secțiunea 15 — testele reconcilerului). `npm run build` curat. Toate datele de test (cont Premium temporar, PDF-uri, favorite) șterse după verificare.

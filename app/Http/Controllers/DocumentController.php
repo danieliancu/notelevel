@@ -5,6 +5,7 @@ namespace App\Http\Controllers;
 use App\Models\Document;
 use App\Models\Folder;
 use App\Services\DocumentManager;
+use App\Services\PdfPageImportReconciler;
 use App\Services\PlanQuotaService;
 use App\Services\TenantStorageTransaction;
 use App\Support\NameSanitizer;
@@ -19,6 +20,7 @@ class DocumentController extends Controller
         private DocumentManager $documents,
         private TenantStorageTransaction $storageTransaction,
         private PlanQuotaService $quotas,
+        private PdfPageImportReconciler $pdfPageImports,
     ) {}
 
     public function index(Request $request)
@@ -61,8 +63,11 @@ class DocumentController extends Controller
                 'page_count' => (int) $request->input('page_count', 0),
                 'version' => DB::raw('version + 1'),
             ]);
+            $existing->refresh();
 
-            return response()->json($existing->refresh());
+            $this->pdfPageImports->reconcile($existing, $request->input('content'));
+
+            return response()->json($existing);
         }
 
         $document = Document::create([
@@ -75,21 +80,28 @@ class DocumentController extends Controller
             'page_count' => (int) $request->input('page_count', 0),
         ]);
 
+        $this->pdfPageImports->reconcile($document, $request->input('content'));
+
         return response()->json($document, 201);
     }
 
     public function update(Request $request, Document $document)
     {
+        $content = $request->input('content', $document->content);
+
         $document->update([
-            'content' => $request->input('content', $document->content),
+            'content' => $content,
             'guide_mode' => $request->input('guideMode', $document->guide_mode),
             'guides_visible' => $request->boolean('guidesVisible', $document->guides_visible),
             'page_background_color' => $request->input('pageBackgroundColor', $document->page_background_color),
             'page_count' => (int) $request->input('page_count', $document->page_count),
             'version' => DB::raw('version + 1'),
         ]);
+        $document->refresh();
 
-        return response()->json($document->refresh());
+        $this->pdfPageImports->reconcile($document, $content);
+
+        return response()->json($document);
     }
 
     public function destroy(Document $document)
@@ -212,6 +224,8 @@ class DocumentController extends Controller
                 'retryable' => false,
             ], 409);
         }
+
+        $this->pdfPageImports->reconcile($document, $request->input('content'));
 
         return response()->json([
             'ok' => true,

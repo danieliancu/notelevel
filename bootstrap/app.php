@@ -16,6 +16,12 @@ return Application::configure(basePath: dirname(__DIR__))
         health: '/up',
     )
     ->withMiddleware(function (Middleware $middleware): void {
+        // Forge/production sites typically sit behind a reverse proxy (Nginx,
+        // possibly Cloudflare in front of that); without this, Laravel can
+        // fail to detect HTTPS requests correctly, breaking secure session
+        // cookies and silently bouncing authenticated requests to login.
+        $middleware->trustProxies(at: '*');
+
         $middleware->append(RequestContext::class);
         $middleware->append(SecurityHeaders::class);
 

@@ -3683,6 +3683,33 @@
             }
         }
 
+        function dataUrlToBytes(dataUrl) {
+            // Deliberately not `fetch(dataUrl)`: browsers treat that as a network
+            // request subject to CSP `connect-src`, and `connect-src 'self'` (no
+            // `data:`) blocks it outright with no fallback — this is why PDF
+            // export/download silently failed. Decoding the base64 payload
+            // directly avoids the network stack entirely.
+            const base64 = dataUrl.slice(dataUrl.indexOf(',') + 1);
+            const binary = atob(base64);
+            const bytes = new Uint8Array(binary.length);
+            for (let i = 0; i < binary.length; i++) {
+                bytes[i] = binary.charCodeAt(i);
+            }
+            return bytes;
+        }
+
+        function showCanvasToast(message) {
+            const toast = document.createElement('div');
+            toast.className = 'canvas-status-toast';
+            toast.textContent = message;
+            document.body.appendChild(toast);
+            setTimeout(() => toast.classList.add('is-visible'), 10);
+            setTimeout(() => {
+                toast.classList.remove('is-visible');
+                setTimeout(() => toast.remove(), 300);
+            }, 6000);
+        }
+
         async function exportDocumentAsPdf(pdfId, pdfName) {
             if (window.CANVAS_DEMO_MODE) {
                 window.location.href = window.CANVAS_REGISTER_URL;
@@ -3699,6 +3726,16 @@
                 return;
             }
 
+            try {
+                await exportDocumentAsPdfUnsafe(pdfId, pdfName);
+            } catch (error) {
+                console.error('exportDocumentAsPdf failed', error);
+                showCanvasToast('Could not download this PDF. Please try again.');
+                await renderCurrentPage();
+            }
+        }
+
+        async function exportDocumentAsPdfUnsafe(pdfId, pdfName) {
             const entries = [...pageModels.entries()]
                 .filter(([, model]) => model.sourcePdf && model.sourcePdf.pdfId === pdfId
                     && Array.isArray(model.elements) && model.elements.length > 0)
@@ -3727,7 +3764,7 @@
                 const scaleToPdf = 1 / rect.scale;
 
                 const overlayDataUrl = renderElementsOnlyToTransparentDataUrl(model);
-                const overlayBytes = await (await fetch(overlayDataUrl)).arrayBuffer();
+                const overlayBytes = dataUrlToBytes(overlayDataUrl);
                 const overlayImage = await outDoc.embedPng(overlayBytes);
 
                 pageOrder.forEach((slotSourceIndex, slot) => {
@@ -9807,15 +9844,7 @@ return { ok: false, message: (err && err.message) || 'Network error while readin
         initializeApp();
 
         if (window.CANVAS_STATUS_MESSAGE) {
-            const toast = document.createElement('div');
-            toast.className = 'canvas-status-toast';
-            toast.textContent = window.CANVAS_STATUS_MESSAGE;
-            document.body.appendChild(toast);
-            setTimeout(() => toast.classList.add('is-visible'), 10);
-            setTimeout(() => {
-            toast.classList.remove('is-visible');
-            setTimeout(() => toast.remove(), 300);
-            }, 6000);
+            showCanvasToast(window.CANVAS_STATUS_MESSAGE);
         }
 
         /* ===== SLIDE PANEL SYSTEM (generic, reutilizabil) ===== */
@@ -10168,7 +10197,15 @@ return { ok: false, message: (err && err.message) || 'Network error while readin
 
         async function getPdfSourceBytes(url) {
             if (!pdfBytesCache.has(url)) {
-                pdfBytesCache.set(url, (async () => (await fetch(url)).arrayBuffer())());
+                const request = (async () => {
+                    const response = await fetch(url);
+                    if (!response.ok) {
+                        throw new Error(`Failed to fetch PDF (${response.status}) from ${url}`);
+                    }
+                    return response.arrayBuffer();
+                })();
+                request.catch(() => pdfBytesCache.delete(url));
+                pdfBytesCache.set(url, request);
             }
             return pdfBytesCache.get(url);
         }
@@ -10333,16 +10370,19 @@ return { ok: false, message: (err && err.message) || 'Network error while readin
             });
         }
 
-        function buildPdfPageSlotCard(entry, sourceIndex, label, isSelected, handlers, isFavourited) {
+        function buildPdfPageSlotCard(entry, sourceIndex, label, isSelected, handlers, isFavourited, isImported) {
             const card = document.createElement('div');
-            card.className = 'library-page-slot-card';
+            card.className = 'library-page-slot-card' + (isImported ? ' is-imported' : '');
             card.innerHTML = ''
                 + '<div class="library-pdf-page"><span class="library-pdf-page-status">Loading...</span></div>'
                 + '<div class="library-pdf-name-row">'
-                + `<input type="checkbox" class="library-page-select-checkbox" aria-label="Select ${escapeHtml(label)}"${isSelected ? ' checked' : ''}>`
+                + `<input type="checkbox" class="library-page-select-checkbox" aria-label="Select ${escapeHtml(label)}"${isSelected ? ' checked' : ''}${isImported ? ' disabled' : ''}>`
                 + `<span class="library-pdf-name">${escapeHtml(label)}</span>`
                 + (isFavourited
                     ? '<svg class="library-page-fav-star" viewBox="0 0 24 24" aria-label="In favourites"><path d="M12 3.5l2.47 5.4 5.93.63-4.45 4.02 1.24 5.83L12 16.7l-5.19 2.68 1.24-5.83-4.45-4.02 5.93-.63z" fill="currentColor"/></svg>'
+                    : '')
+                + (isImported
+                    ? '<svg class="library-page-lock-icon" viewBox="0 0 24 24" aria-label="Already imported"><rect x="5" y="11" width="14" height="9" rx="2" fill="none" stroke="currentColor" stroke-width="1.7"/><path d="M8 11V8a4 4 0 0 1 8 0v3" fill="none" stroke="currentColor" stroke-width="1.7" stroke-linecap="round"/></svg>'
                     : '')
                 + '</div>';
 
@@ -10353,9 +10393,11 @@ return { ok: false, message: (err && err.message) || 'Network error while readin
                 pageEl.innerHTML = '<span class="library-pdf-page-status">Preview unavailable</span>';
             });
 
-            card.querySelector('.library-page-select-checkbox').addEventListener('change', (event) => {
-                handlers.onToggleSelect(event.target.checked);
-            });
+            if (!isImported) {
+                card.querySelector('.library-page-select-checkbox').addEventListener('change', (event) => {
+                    handlers.onToggleSelect(event.target.checked);
+                });
+            }
 
             return card;
         }
@@ -10368,6 +10410,7 @@ return { ok: false, message: (err && err.message) || 'Network error while readin
                 : Array.from({ length: entry.pageCount }, (_, i) => i);
             let selectedSlots = new Set();
             let favouritedPageIndices = new Set();
+            const importedPageIndices = new Set(entry.importedPageIndices || []);
 
             const refreshFavouritedPages = async () => {
                 const { items } = await fetchPdfFavourites();
@@ -10380,8 +10423,9 @@ return { ok: false, message: (err && err.message) || 'Network error while readin
 
             const syncSelectAllState = () => {
                 if (!selectAllCheckbox) return;
-                selectAllCheckbox.checked = pageOrder.length > 0 && selectedSlots.size === pageOrder.length;
-                selectAllCheckbox.indeterminate = selectedSlots.size > 0 && selectedSlots.size < pageOrder.length;
+                const selectableCount = pageOrder.filter((sourceIndex) => !importedPageIndices.has(sourceIndex)).length;
+                selectAllCheckbox.checked = selectableCount > 0 && selectedSlots.size === selectableCount;
+                selectAllCheckbox.indeterminate = selectedSlots.size > 0 && selectedSlots.size < selectableCount;
             };
 
             const renderGrid = () => {
@@ -10402,7 +10446,7 @@ return { ok: false, message: (err && err.message) || 'Network error while readin
                             }
                             syncSelectAllState();
                         }
-                    }, favouritedPageIndices.has(sourceIndex)));
+                    }, favouritedPageIndices.has(sourceIndex), importedPageIndices.has(sourceIndex)));
                 });
                 if (pageOrder.length === 0) {
                     list.innerHTML = '<p class="library-pdf-status">No pages left in this PDF.</p>';
@@ -10413,7 +10457,7 @@ return { ok: false, message: (err && err.message) || 'Network error while readin
             if (selectAllCheckbox) {
                 selectAllCheckbox.addEventListener('change', () => {
                     selectedSlots = selectAllCheckbox.checked
-                        ? new Set(pageOrder.map((_, slot) => slot))
+                        ? new Set(pageOrder.map((sourceIndex, slot) => (importedPageIndices.has(sourceIndex) ? -1 : slot)).filter((slot) => slot !== -1))
                         : new Set();
                     renderGrid();
                 });
@@ -10441,8 +10485,16 @@ return { ok: false, message: (err && err.message) || 'Network error while readin
                         });
                         pageOrder = newOrder;
                     } else if (action === 'import') {
-                        const sourceIndices = pageOrder.filter((_, slot) => selectedSlots.has(slot));
-                        await insertPdfPages(entry.id, entry.url, sourceIndices);
+                        const sourceIndices = pageOrder.filter((sourceIndex, slot) => selectedSlots.has(slot) && !importedPageIndices.has(sourceIndex));
+                        const skippedCount = pageOrder.filter((sourceIndex, slot) => selectedSlots.has(slot) && importedPageIndices.has(sourceIndex)).length;
+                        if (sourceIndices.length > 0) {
+                            await insertPdfPages(entry.id, entry.url, sourceIndices);
+                        }
+                        if (skippedCount > 0) {
+                            showCanvasToast(skippedCount === 1
+                                ? 'One selected page is already imported and was skipped.'
+                                : `${skippedCount} selected pages are already imported and were skipped.`);
+                        }
                     } else if (action === 'favourite') {
                         const sourceIndices = pageOrder.filter((_, slot) => selectedSlots.has(slot));
                         await openAddToFavouritesModal(entry, sourceIndices);
@@ -10473,16 +10525,19 @@ return { ok: false, message: (err && err.message) || 'Network error while readin
             return card;
         }
 
-        function buildFavouritePageCard(item, onDeleted) {
+        function buildFavouritePageCard(item, onDeleted, isSelected, onToggleSelect) {
             const card = document.createElement('div');
-            card.className = 'library-pdf-card';
+            card.className = 'library-pdf-card' + (item.isImported ? ' is-imported' : '');
             card.innerHTML = ''
                 + '<div class="library-pdf-main">'
+                + '<div class="library-pdf-name-row">'
+                + `<input type="checkbox" class="library-page-select-checkbox library-fav-select-checkbox" aria-label="Select ${escapeHtml(item.name)}"${isSelected ? ' checked' : ''}>`
                 + `<div class="library-pdf-name">${escapeHtml(item.name)}</div>`
+                + '</div>'
                 + '<div class="library-pdf-page"><span class="library-pdf-page-status">Loading...</span></div>'
                 + '</div>'
                 + '<div class="library-pdf-icons">'
-                + '<button type="button" class="library-pdf-icon-btn library-fav-import" aria-label="Import page into document"><svg viewBox="0 0 24 24" aria-hidden="true"><path d="M15 3h4a2 2 0 0 1 2 2v14a2 2 0 0 1-2 2h-4"/><path d="M10 17l5-5-5-5"/><path d="M15 12H3"/></svg></button>'
+                + `<button type="button" class="library-pdf-icon-btn library-fav-import" aria-label="${item.isImported ? 'Already imported' : 'Import page into document'}"${item.isImported ? ' disabled title="Already imported"' : ''}><svg viewBox="0 0 24 24" aria-hidden="true"><path d="M15 3h4a2 2 0 0 1 2 2v14a2 2 0 0 1-2 2h-4"/><path d="M10 17l5-5-5-5"/><path d="M15 12H3"/></svg></button>`
                 + '<button type="button" class="library-pdf-icon-btn library-fav-delete" aria-label="Remove from favourites"><svg viewBox="0 0 24 24" aria-hidden="true"><path d="M3 6h18"/><path d="M8 6V4h8v2"/><path d="M6.5 6l1 14h9l1-14"/><path d="M10 11v5"/><path d="M14 11v5"/></svg></button>'
                 + '</div>';
 
@@ -10493,9 +10548,25 @@ return { ok: false, message: (err && err.message) || 'Network error while readin
                 pageEl.innerHTML = '<span class="library-pdf-page-status">Preview unavailable</span>';
             });
 
-            card.querySelector('.library-fav-import').addEventListener('click', async () => {
-                await insertPdfPages(item.id, item.url, [0]);
+            card.querySelector('.library-fav-select-checkbox').addEventListener('change', (event) => {
+                if (typeof onToggleSelect === 'function') {
+                    onToggleSelect(event.target.checked);
+                }
             });
+
+            if (!item.isImported) {
+                card.querySelector('.library-fav-import').addEventListener('click', async () => {
+                    // Import via the *original* PDF's identity when this favourite was
+                    // cut from one, so the lock is tied to the real (pdfId, pageIndex)
+                    // and collides correctly with the same page imported any other way.
+                    if (item.sourcePdfId && Number.isInteger(item.sourcePageIndex)) {
+                        const sourceUrl = `/canvas/api?action=pdf_file&id=${encodeURIComponent(item.sourcePdfId)}`;
+                        await insertPdfPages(item.sourcePdfId, sourceUrl, [item.sourcePageIndex]);
+                    } else {
+                        await insertPdfPages(item.id, item.url, [0]);
+                    }
+                });
+            }
             card.querySelector('.library-fav-delete').addEventListener('click', async () => {
                 if (!window.confirm(`Remove "${item.name}" from Favourites?`)) {
                     return;
@@ -10511,7 +10582,50 @@ return { ok: false, message: (err && err.message) || 'Network error while readin
             return card;
         }
 
-        async function renderLibraryFavouritesView(container, folder) {
+        async function downloadSelectedFavouritesAsPdf(selectedFavourites) {
+            if (window.CANVAS_DEMO_MODE) {
+                window.location.href = window.CANVAS_REGISTER_URL;
+                return;
+            }
+            if (!window.CANVAS_PDF_EXPORT_ALLOWED) {
+                window.alert('Downloading favourites as PDF is a Premium feature. Upgrade to unlock it.');
+                return;
+            }
+            if (!window.PDFLib) {
+                window.alert('The PDF export engine failed to load.');
+                return;
+            }
+            if (!selectedFavourites.length) {
+                return;
+            }
+
+            try {
+                const outDoc = await PDFLib.PDFDocument.create();
+                for (const item of selectedFavourites) {
+                    const bytes = await getPdfSourceBytes(item.url);
+                    const sourceDoc = await PDFLib.PDFDocument.load(bytes);
+                    const copiedPages = await outDoc.copyPages(sourceDoc, sourceDoc.getPageIndices());
+                    copiedPages.forEach((page) => outDoc.addPage(page));
+                }
+                const outBytes = await outDoc.save();
+                const blob = new Blob([outBytes], { type: 'application/pdf' });
+                const url = URL.createObjectURL(blob);
+                const link = document.createElement('a');
+                link.href = url;
+                link.download = selectedFavourites.length === 1
+                    ? `${selectedFavourites[0].name || 'favourite'}.pdf`
+                    : 'favourites.pdf';
+                document.body.appendChild(link);
+                link.click();
+                link.remove();
+                URL.revokeObjectURL(url);
+            } catch (error) {
+                console.error('downloadSelectedFavouritesAsPdf failed', error);
+                showCanvasToast('Could not build the merged PDF. Please try again.');
+            }
+        }
+
+        async function renderLibraryFavouritesView(container, folder, bulkSelect, selectAllCheckbox) {
             container.innerHTML = '<p class="library-pdf-status">Loading...</p>';
             const { folders, items } = await fetchPdfFavourites();
             container.innerHTML = '<div class="library-pdf-list"></div>';
@@ -10519,14 +10633,74 @@ return { ok: false, message: (err && err.message) || 'Network error while readin
 
             const refresh = () => renderLibraryPdfsTab(activeLibraryPdfContainer);
             const visibleItems = items.filter((item) => (item.folder || '') === (folder || ''));
+            let selectedFavouriteIds = new Set();
 
-            if (!folder) {
-                folders.forEach((name) => list.appendChild(buildFolderCard(name)));
+            const syncSelectAllState = () => {
+                if (!selectAllCheckbox) return;
+                selectAllCheckbox.checked = visibleItems.length > 0 && selectedFavouriteIds.size === visibleItems.length;
+                selectAllCheckbox.indeterminate = selectedFavouriteIds.size > 0 && selectedFavouriteIds.size < visibleItems.length;
+            };
+
+            const renderList = () => {
+                list.innerHTML = '';
+                if (!folder) {
+                    folders.forEach((name) => list.appendChild(buildFolderCard(name)));
+                }
+                visibleItems.forEach((item) => {
+                    list.appendChild(buildFavouritePageCard(item, refresh, selectedFavouriteIds.has(item.id), (checked) => {
+                        if (checked) {
+                            selectedFavouriteIds.add(item.id);
+                        } else {
+                            selectedFavouriteIds.delete(item.id);
+                        }
+                        syncSelectAllState();
+                    }));
+                });
+                if ((!folder && folders.length === 0) && visibleItems.length === 0) {
+                    list.innerHTML = '<p class="library-pdf-status">No favourites yet.</p>';
+                }
+                syncSelectAllState();
+            };
+
+            renderList();
+
+            if (selectAllCheckbox) {
+                selectAllCheckbox.addEventListener('change', () => {
+                    selectedFavouriteIds = selectAllCheckbox.checked
+                        ? new Set(visibleItems.map((item) => item.id))
+                        : new Set();
+                    renderList();
+                });
             }
-            visibleItems.forEach((item) => list.appendChild(buildFavouritePageCard(item, refresh)));
 
-            if ((!folder && folders.length === 0) && visibleItems.length === 0) {
-                list.innerHTML = '<p class="library-pdf-status">No favourites yet.</p>';
+            if (bulkSelect) {
+                bulkSelect.addEventListener('change', async () => {
+                    const action = bulkSelect.value;
+                    bulkSelect.value = '';
+                    if (!action || selectedFavouriteIds.size === 0) {
+                        return;
+                    }
+
+                    const selected = visibleItems.filter((item) => selectedFavouriteIds.has(item.id));
+
+                    if (action === 'download') {
+                        await downloadSelectedFavouritesAsPdf(selected);
+                    } else if (action === 'delete') {
+                        if (!window.confirm(`Remove ${selected.length} favourite${selected.length === 1 ? '' : 's'}?`)) {
+                            return;
+                        }
+                        for (const item of selected) {
+                            await deletePdfFavourite(item.id);
+                            pdfDocCache.delete(item.id);
+                            pdfThumbnailCache.delete(item.id);
+                        }
+                        await refresh();
+                        return;
+                    }
+
+                    selectedFavouriteIds = new Set();
+                    renderList();
+                });
             }
         }
 
@@ -10544,6 +10718,7 @@ return { ok: false, message: (err && err.message) || 'Network error while readin
             const card = document.createElement('div');
             card.className = 'library-pdf-card' + (libraryPdfSelectedId === entry.id ? ' is-selected' : '');
             const exportDisabled = !window.CANVAS_PDF_EXPORT_ALLOWED;
+            const importedPageIndices = new Set(entry.importedPageIndices || []);
             card.innerHTML = ''
                 + '<div class="library-pdf-main">'
                 + '<div class="library-pdf-name-row">'
@@ -10568,12 +10743,20 @@ return { ok: false, message: (err && err.message) || 'Network error while readin
             const label = card.querySelector('.library-pdf-page-label');
             const prevBtn = card.querySelector('.library-pdf-prev');
             const nextBtn = card.querySelector('.library-pdf-next');
+            const importMenuItem = card.querySelector('.library-pdf-import');
             let pageIndex = Math.max(0, Math.min(entry.pageCount - 1, libraryPdfLastPageIndex.get(entry.id) || 0));
+
+            const updateImportState = () => {
+                const isImported = importedPageIndices.has(pageIndex);
+                importMenuItem.disabled = isImported;
+                importMenuItem.textContent = isImported ? 'Already imported' : 'Insert page into canvas';
+            };
 
             const updateNavState = () => {
                 prevBtn.disabled = pageIndex <= 0;
                 nextBtn.disabled = pageIndex >= entry.pageCount - 1;
                 label.textContent = `${pageIndex + 1} / ${entry.pageCount}`;
+                updateImportState();
             };
 
             const showPage = async (index) => {
@@ -10628,6 +10811,9 @@ return { ok: false, message: (err && err.message) || 'Network error while readin
             });
             card.querySelector('.library-pdf-import').addEventListener('click', async () => {
                 menu.classList.remove('is-open');
+                if (importedPageIndices.has(pageIndex)) {
+                    return;
+                }
                 await insertPdfPages(entry.id, entry.url, [pageIndex]);
             });
             card.querySelector('.library-pdf-export').addEventListener('click', async () => {
@@ -10692,9 +10878,16 @@ return { ok: false, message: (err && err.message) || 'Network error while readin
             }
 
             if (view.mode === 'favourites' || view.mode === 'favouritesFolder') {
+                const exportDisabled = !window.CANVAS_PDF_EXPORT_ALLOWED;
                 container.innerHTML = ''
                     + '<div class="library-pdf-toolbar">'
                     + '<button type="button" class="library-pdf-back-link"><svg viewBox="0 0 24 24" aria-hidden="true"><path d="M15 6 9 12l6 6"/></svg><span>Back</span></button>'
+                    + '<input type="checkbox" class="library-pdf-select-all" aria-label="Select all favourites">'
+                    + '<select class="library-pdf-bulk-select">'
+                    + '<option value="" selected>Bulk action...</option>'
+                    + `<option value="download"${exportDisabled ? ' disabled' : ''}>Download selected${exportDisabled ? ' (Premium)' : ''}</option>`
+                    + '<option value="delete">Delete selected</option>'
+                    + '</select>'
                     + (view.mode === 'favourites'
                         ? '<button type="button" class="library-pdf-import-new library-pdf-new-folder">'
                             + '<svg viewBox="0 0 24 24" aria-hidden="true"><path d="M12 5v14M5 12h14"/></svg>'
@@ -10731,7 +10924,12 @@ return { ok: false, message: (err && err.message) || 'Network error while readin
                         goToLibraryPdfView({ mode: 'favourites' });
                     });
                 }
-                renderLibraryFavouritesView(container.querySelector('.library-pdf-view-body'), view.mode === 'favouritesFolder' ? view.folder : '');
+                renderLibraryFavouritesView(
+                    container.querySelector('.library-pdf-view-body'),
+                    view.mode === 'favouritesFolder' ? view.folder : '',
+                    container.querySelector('.library-pdf-bulk-select'),
+                    container.querySelector('.library-pdf-select-all')
+                );
                 return;
             }
 

@@ -36,4 +36,9 @@ class Pdf extends Model
     {
         return $this->hasMany(Favourite::class, 'source_pdf_id');
     }
+
+    public function pageImports(): HasMany
+    {
+        return $this->hasMany(PdfPageImport::class);
+    }
 }

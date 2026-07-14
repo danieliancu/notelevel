@@ -4045,6 +4045,23 @@ color: var(--accent);
   cursor: pointer;
 }
 
+.library-page-lock-icon {
+  flex: 0 0 auto;
+  width: 14px;
+  height: 14px;
+  color: var(--muted);
+}
+
+.library-page-slot-card.is-imported,
+.library-pdf-card.is-imported {
+  opacity: 0.55;
+}
+
+.library-page-slot-card.is-imported .library-pdf-page,
+.library-pdf-card.is-imported .library-pdf-page {
+  cursor: not-allowed;
+}
+
 .library-pdf-page {
   width: 168px;
   height: 216px;

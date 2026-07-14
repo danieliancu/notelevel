@@ -7,7 +7,9 @@ use App\Models\Favourite;
 use App\Models\Folder;
 use App\Models\Pdf;
 use App\Models\PdfFolder;
+use App\Models\PdfPageImport;
 use App\Services\DocumentManager;
+use App\Services\PdfPageImportReconciler;
 use App\Services\PlanQuotaService;
 use App\Services\TenantStorageTransaction;
 use App\Support\NameSanitizer;
@@ -48,6 +50,7 @@ class CanvasApiController extends Controller
         private TenantStorageTransaction $storageTransaction,
         private PlanQuotaService $quotas,
         private DocumentManager $documents,
+        private PdfPageImportReconciler $pdfPageImports,
     ) {}
 
     public function handleRead(Request $request): mixed
@@ -270,6 +273,8 @@ class CanvasApiController extends Controller
             throw $exception;
         }
 
+        $this->pdfPageImports->reconcile($document, is_array($documentData) ? $documentData : null);
+
         return response()->json([
             'ok' => true,
             'file' => $this->ref($folderName, $title),
@@ -485,7 +490,14 @@ class CanvasApiController extends Controller
         [$offset, $limit] = $this->pagination($request);
         $pdfs = Pdf::orderByDesc('uploaded_at')->skip($offset)->take($limit + 1)->get();
         $hasMore = $pdfs->count() > $limit;
-        $items = $pdfs->take($limit)->map(function (Pdf $pdf) {
+        $pageOfPdfs = $pdfs->take($limit);
+
+        $importedByPdfId = PdfPageImport::whereIn('pdf_id', $pageOfPdfs->pluck('id'))
+            ->get()
+            ->groupBy('pdf_id')
+            ->map(fn ($rows) => $rows->pluck('page_index')->values()->all());
+
+        $items = $pageOfPdfs->map(function (Pdf $pdf) use ($importedByPdfId) {
             return [
                 'id' => (string) $pdf->id,
                 'name' => $pdf->name,
@@ -493,6 +505,7 @@ class CanvasApiController extends Controller
                 'uploaded' => $pdf->uploaded_at?->getTimestamp() ?? 0,
                 'url' => "/canvas/api?action=pdf_file&id={$pdf->id}",
                 'pageOrder' => $pdf->page_order ?? [],
+                'importedPageIndices' => $importedByPdfId->get($pdf->id, []),
             ];
         })->values();
 
@@ -638,7 +651,18 @@ class CanvasApiController extends Controller
         [$offset, $limit] = $this->pagination($request);
         $favourites = Favourite::with('pdfFolder')->orderByDesc('added_at')->skip($offset)->take($limit + 1)->get();
         $hasMore = $favourites->count() > $limit;
-        $items = $favourites->take($limit)->map(function (Favourite $favourite) {
+        $pageOfFavourites = $favourites->take($limit);
+
+        $importedPairs = PdfPageImport::whereIn('pdf_id', $pageOfFavourites->pluck('source_pdf_id')->filter())
+            ->get(['pdf_id', 'page_index'])
+            ->map(fn ($row) => $row->pdf_id.':'.$row->page_index)
+            ->all();
+
+        $items = $pageOfFavourites->map(function (Favourite $favourite) use ($importedPairs) {
+            $isImported = $favourite->source_pdf_id !== null
+                && $favourite->source_page_index !== null
+                && in_array($favourite->source_pdf_id.':'.$favourite->source_page_index, $importedPairs, true);
+
             return [
                 'id' => (string) $favourite->id,
                 'name' => $favourite->name,
@@ -648,6 +672,7 @@ class CanvasApiController extends Controller
                 'url' => "/canvas/api?action=favourite_file&id={$favourite->id}",
                 'sourcePdfId' => $favourite->source_pdf_id ? (string) $favourite->source_pdf_id : '',
                 'sourcePageIndex' => $favourite->source_page_index,
+                'isImported' => $isImported,
             ];
         })->values();
 
