@@ -1358,7 +1358,7 @@ html.a11y-reduce-motion *::after {
 body.has-cookie-bar .a11y-widget { bottom: 100px; }
 
 @media (max-width: 600px) {
-  .cookie-bar-inner { padding: 14px var(--pad-mobile); flex-direction: column; align-items: stretch; }
+  .cookie-bar-inner { padding: 14px var(--pad-mobile); flex-direction: column; flex-wrap: nowrap; align-items: stretch; height: 140px; }
   .cookie-bar-actions { justify-content: stretch; }
   .cookie-bar-btn { flex: 1; text-align: center; }
   body.has-cookie-bar .a11y-widget { bottom: 148px; }
