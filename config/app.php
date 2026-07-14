@@ -56,6 +56,8 @@ return [
 
     'legal_contact_email' => env('LEGAL_CONTACT_EMAIL', 'privacy@notelevel.com'),
 
+    'contact_form_recipient' => env('CONTACT_FORM_RECIPIENT', 'dani.iancu@yahoo.com'),
+
     'legacy_api_sunset' => env('LEGACY_API_SUNSET', 'Wed, 31 Dec 2026 23:59:59 GMT'),
 
     'vite_dev_origin' => env('VITE_DEV_ORIGIN'),

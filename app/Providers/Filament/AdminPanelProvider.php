@@ -10,6 +10,7 @@ use Filament\Pages\Dashboard;
 use Filament\Panel;
 use Filament\PanelProvider;
 use Filament\Support\Colors\Color;
+use Filament\View\PanelsRenderHook;
 use Filament\Widgets\AccountWidget;
 use Filament\Widgets\FilamentInfoWidget;
 use Illuminate\Cookie\Middleware\AddQueuedCookiesToResponse;
@@ -17,6 +18,7 @@ use Illuminate\Cookie\Middleware\EncryptCookies;
 use Illuminate\Foundation\Http\Middleware\VerifyCsrfToken;
 use Illuminate\Routing\Middleware\SubstituteBindings;
 use Illuminate\Session\Middleware\StartSession;
+use Illuminate\Support\HtmlString;
 use Illuminate\View\Middleware\ShareErrorsFromSession;
 
 class AdminPanelProvider extends PanelProvider
@@ -58,6 +60,24 @@ class AdminPanelProvider extends PanelProvider
             ])
             ->authMiddleware([
                 Authenticate::class,
-            ]);
+            ])
+            ->renderHook(
+                PanelsRenderHook::HEAD_END,
+                fn () => new HtmlString(<<<'HTML'
+                    <style>
+                        .fi-sidebar-item:has(> a[href$="/contact-messages"]) .fi-badge {
+                            background-color: #dc2626 !important;
+                            color: #ffffff !important;
+                            box-shadow: none !important;
+                            border-radius: 9999px !important;
+                            min-width: 1.35rem;
+                            height: 1.35rem;
+                            padding: 0 4px;
+                            aspect-ratio: 1 / 1;
+                            font-weight: 700;
+                        }
+                    </style>
+                    HTML),
+            );
     }
 }

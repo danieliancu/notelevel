@@ -95,10 +95,16 @@
   <section class="hero">
     <div class="container hero-inner">
       <div class="hero-left">
-        <span class="badge">
-          <svg width="14" height="14" viewBox="0 0 24 24" fill="currentColor"><path d="m12 3-1.912 5.813a2 2 0 0 1-1.275 1.275L3 12l5.813 1.912a2 2 0 0 1 1.275 1.275L12 21l1.912-5.813a2 2 0 0 1 1.275-1.275L21 12l-5.813-1.912a2 2 0 0 1-1.275-1.275L12 3Z"/></svg>
-          100% In-Browser Notebook
-        </span>
+        <div class="hero-badges">
+          <span class="badge">
+            <svg width="14" height="14" viewBox="0 0 24 24" fill="currentColor"><path d="m12 3-1.912 5.813a2 2 0 0 1-1.275 1.275L3 12l5.813 1.912a2 2 0 0 1 1.275 1.275L12 21l1.912-5.813a2 2 0 0 1 1.275-1.275L21 12l-5.813-1.912a2 2 0 0 1-1.275-1.275L12 3Z"/></svg>
+            100% In-Browser
+          </span>
+          <span class="badge">
+            <svg width="14" height="14" viewBox="0 0 24 24" fill="currentColor"><path d="M6 2a2 2 0 0 0-2 2v16a2 2 0 0 0 2 2h12a2 2 0 0 0 2-2V8l-6-6H6Zm7 1.5L18.5 9H13V3.5ZM8 13h8v1.5H8V13Zm0 3h8v1.5H8V16Z"/></svg>
+            PDF Editing
+          </span>
+        </div>
 
         <h1 class="hero-title">Turn messy notes into<br /> <span class="text-accent">clear ideas.</span></h1>
 
@@ -116,7 +122,7 @@
         <ul class="mini-features">
           <li>
             <svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.7" stroke-linecap="round" stroke-linejoin="round"><path d="M15 2H6a2 2 0 0 0-2 2v16a2 2 0 0 0 2 2h12a2 2 0 0 0 2-2V7Z"/><path d="M14 2v4a2 2 0 0 0 2 2h4"/><path d="M10 9H8"/><path d="M16 13H8"/><path d="M16 17H8"/></svg>
-            Unlimited pages
+            No credit card required
           </li>
           <li>
             <svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.7" stroke-linecap="round" stroke-linejoin="round"><path d="m12 3-1.912 5.813a2 2 0 0 1-1.275 1.275L3 12l5.813 1.912a2 2 0 0 1 1.275 1.275L12 21l1.912-5.813a2 2 0 0 1 1.275-1.275L21 12l-5.813-1.912a2 2 0 0 1-1.275-1.275L12 3Z"/></svg>
@@ -170,10 +176,10 @@
         </article>
         <article class="card">
           <span class="icon-circle">
-            <svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.7" stroke-linecap="round" stroke-linejoin="round"><path d="m12 3-1.912 5.813a2 2 0 0 1-1.275 1.275L3 12l5.813 1.912a2 2 0 0 1 1.275 1.275L12 21l1.912-5.813a2 2 0 0 1 1.275-1.275L21 12l-5.813-1.912a2 2 0 0 1-1.275-1.275L12 3Z"/></svg>
+            <svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.7" stroke-linecap="round" stroke-linejoin="round"><path d="M12.5 22H18a2 2 0 0 0 2-2V7l-5-5H6a2 2 0 0 0-2 2v9.5"/><path d="M14 2v4a2 2 0 0 0 2 2h4"/><path d="M10.4 12.6a2 2 0 1 1 3 3L8 21l-4 1 1-4Z"/></svg>
           </span>
-          <h3>Ask AI</h3>
-          <p>Improve drawings, text, homework and diagrams. Your AI thinking partner.</p>
+          <h3>Edit &amp; export PDFs</h3>
+          <p>Import a PDF, mark it up with pen, text and shapes, then save and export it back to PDF or JPG.</p>
         </article>
       </div>
     </div>
@@ -194,8 +200,8 @@
               <svg width="40" height="40" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.7" stroke-linecap="round" stroke-linejoin="round"><path d="m21.64 3.64-1.28-1.28a1.21 1.21 0 0 0-1.72 0L2.36 18.64a1.21 1.21 0 0 0 0 1.72l1.28 1.28a1.2 1.2 0 0 0 1.72 0L21.64 5.36a1.2 1.2 0 0 0 0-1.72Z"/><path d="m14 7 3 3"/><path d="M5 6v4"/><path d="M19 14v4"/><path d="M10 2v2"/><path d="M7 8H3"/><path d="M21 16h-4"/><path d="M11 3H9"/></svg>
             </span>
           </div>
-          <h3>Clean up drawings</h3>
-          <p>Straighten messy sketches and make them presentation-ready.</p>
+          <h3>Perfect Shape</h3>
+          <p>Draw a rough circle or line and watch it snap into a clean, perfect shape automatically.</p>
         </article>
         <article class="ai-card-tile">
           <div class="icon-wrap">
@@ -203,8 +209,8 @@
               <svg width="40" height="40" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.7" stroke-linecap="round" stroke-linejoin="round"><line x1="21" x2="3" y1="6" y2="6"/><line x1="15" x2="3" y1="12" y2="12"/><line x1="17" x2="3" y1="18" y2="18"/></svg>
             </span>
           </div>
-          <h3>Improve notes</h3>
-          <p>Turn rough writing into structured, readable notes.</p>
+          <h3>Edit by chatting</h3>
+          <p>Recolor, resize, align or duplicate elements just by describing what you want.</p>
         </article>
         <article class="ai-card-tile">
           <div class="icon-wrap">
@@ -212,8 +218,8 @@
               <svg width="40" height="40" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.7" stroke-linecap="round" stroke-linejoin="round"><path d="M21.42 10.922a1 1 0 0 0-.019-1.838L12.83 5.18a2 2 0 0 0-1.66 0L2.6 9.08a1 1 0 0 0 0 1.832l8.57 3.908a2 2 0 0 0 1.66 0z"/><path d="M22 10v6"/><path d="M6 12.5V16a6 3 0 0 0 12 0v-3.5"/></svg>
             </span>
           </div>
-          <h3>Explain homework</h3>
-          <p>Get step-by-step explanations, not just answers.</p>
+          <h3>Ask about your page</h3>
+          <p>Get instant answers about what's on your notes and drawings.</p>
         </article>
         <article class="ai-card-tile">
           <div class="icon-wrap">
@@ -221,8 +227,8 @@
               <svg width="40" height="40" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.7" stroke-linecap="round" stroke-linejoin="round"><path d="M3 3v18h18"/><path d="M18 17V9"/><path d="M13 17V5"/><path d="M8 17v-3"/></svg>
             </span>
           </div>
-          <h3>Create infographics</h3>
-          <p>Transform ideas into clean, beautiful visual layouts.</p>
+          <h3>Solve calculations</h3>
+          <p>Ask AI to calculate or check the math right on your page.</p>
         </article>
         <article class="ai-card-tile">
           <div class="icon-wrap">
@@ -239,8 +245,8 @@
               <svg width="40" height="40" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.7" stroke-linecap="round" stroke-linejoin="round"><path d="m5 8 6 6"/><path d="m4 14 6-6 2-3"/><path d="M2 5h12"/><path d="M7 2h1"/><path d="m22 22-5-10-5 10"/><path d="M14 18h6"/></svg>
             </span>
           </div>
-          <h3>Translate &amp; rewrite</h3>
-          <p>Make your notes clearer in any language.</p>
+          <h3>Translate instantly</h3>
+          <p>Turn your notes into another language in one click.</p>
         </article>
       </div>
     </div>
@@ -269,6 +275,7 @@
               <tr><td data-label="reMarkable">Mostly writing-focused</td><td class="accent-col" data-label="Notelevel">Writing + AI</td></tr>
               <tr><td data-label="reMarkable">Limited flexibility</td><td class="accent-col" data-label="Notelevel">Text, drawing, tables, guides</td></tr>
               <tr><td data-label="reMarkable">Device locked</td><td class="accent-col" data-label="Notelevel">Use tablet, laptop, Chromebook</td></tr>
+              <tr><td data-label="reMarkable">PDF markup tied to the device</td><td class="accent-col" data-label="Notelevel">Edit &amp; export PDFs in any browser</td></tr>
             </tbody>
           </table>
         </div>
@@ -355,7 +362,7 @@
               <path d="M49 5c1.3 4.8 4.2 7.7 9 9-4.8 1.3-7.7 4.2-9 9-1.3-4.8-4.2-7.7-9-9 4.8-1.3 7.7-4.2 9-9Z"></path>
             </svg>
             <strong>AI</strong>
-            <span>Improve rough notes with AI help.</span>
+            <span>Chat to edit, translate or ask about your page.</span>
           </div>
           <div class="demo-feature">
             <svg viewBox="0 0 64 64" aria-hidden="true">
@@ -399,24 +406,28 @@
 
       <div class="pricing-grid">
         <aside class="pricing-cta">
-          <h3>Your notebook should do more than store pages.</h3>
-          <p>Write freely. Think visually. Let AI make it clearer.</p>
+          <div class="pricing-head">
+            <h3>Your notebook should do more than store pages.</h3>
+            <p>Write freely. Think visually. Let AI make it clearer.</p>
+          </div>
           @unless($isPremium)
             @include('marketing.partials.cta-button', ['class' => 'btn btn-primary'])
           @endunless
           <ul class="price-features">
             <li>No credit card required.</li>
-            <li>Limited pages</li>
-            <li>Basic AI tools</li>
+            <li>Up to 20 pages</li>
+            <li>AI tools, monthly usage limit</li>
             <li>Import PDF (up to 3, 2MB each)</li>
             <li>Export JPG</li>
           </ul>
         </aside>
 
         <article class="price-card highlighted">
-          <h3>Pro</h3>
-          <p class="price-desc">AI cleanup, summaries, explanations, export, unlimited notebooks.</p>
-          <p class="price"><span class="amount">{{ $premiumPrice['symbol'] }}{{ number_format($premiumPrice['amount'], 2) }}</span><span class="period">/month</span></p>
+          <div class="pricing-head">
+            <h3>Pro</h3>
+            <p class="price-desc">Unlimited AI usage, summaries, exports and unlimited pages.</p>
+            <p class="price"><span class="amount">{{ $premiumPrice['symbol'] }}{{ number_format($premiumPrice['amount'], 2) }}</span><span class="period">/month</span></p>
+          </div>
           @unless($isPremium)
             <form method="POST" action="{{ route('billing.checkout') }}">
               @csrf
@@ -425,8 +436,8 @@
           @endunless
           <ul class="price-features">
             <li>All Free features</li>
-            <li>Advanced AI tools</li>
-            <li>Unlimited notebooks</li>
+            <li>AI tools, no usage limit</li>
+            <li>Unlimited pages</li>
             <li>Import PDF (unlimited, up to 20MB each)</li>
             <li>Export PDF &amp; JPG</li>
             <li>Priority support</li>
@@ -434,10 +445,12 @@
         </article>
 
         <article class="price-card">
-          <h3>Teams / Schools</h3>
-          <p class="price-desc">For classrooms, tutoring and shared workspaces.</p>
-          <p class="price"><span class="amount amount-custom">Custom pricing</span></p>
-          <button type="button" class="btn btn-outline btn-block" disabled title="Coming soon">Contact us</button>
+          <div class="pricing-head">
+            <h3>Teams / Schools</h3>
+            <p class="price-desc">For classrooms, tutoring and shared workspaces.</p>
+            <p class="price"><span class="amount amount-custom">Custom pricing</span></p>
+          </div>
+          <a href="{{ route('contact') }}" class="btn btn-outline btn-block">Contact us</a>
           <ul class="price-features">
             <li>Everything in Pro</li>
             <li>Team folders</li>
@@ -454,17 +467,23 @@
     <div class="container newsletter-inner">
       <div class="newsletter-text">
         <h2>Get product updates first</h2>
-        <p>New AI tools, notebook templates and product news — sent straight to your inbox, no spam.</p>
+        <p>New AI tools, features and product news — sent straight to your inbox, no spam.</p>
       </div>
 
-      <form class="newsletter-form" action="#" method="post">
+      <form class="newsletter-form" action="{{ route('newsletter.subscribe') }}" method="post">
+        @csrf
         <label class="newsletter-label" for="newsletter-email">Email address</label>
         <div class="newsletter-field">
           <input type="email" id="newsletter-email" name="email" placeholder="you@email.com" required />
           <button type="submit" class="btn btn-primary">Subscribe</button>
         </div>
+        @error('email')<span class="newsletter-error">{{ $message }}</span>@enderror
       </form>
     </div>
+
+    @if(session('status'))
+      <p class="newsletter-status" role="status">{{ session('status') }}</p>
+    @endif
 
     <p class="newsletter-disclaimer">By subscribing, you allow Notelevel to email you product updates. Unsubscribe whenever you like. Read our <a href="{{ url('/privacy') }}">Privacy Policy</a>.</p>
   </section>

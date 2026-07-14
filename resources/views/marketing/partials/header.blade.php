@@ -8,7 +8,7 @@
     <nav class="main-nav" id="main-nav">
       <a href="{{ url('/') }}#features">Features</a>
       <a href="{{ url('/') }}#ai-tools">AI Tools</a>
-      <a href="{{ url('/') }}#templates">Templates</a>
+      <a href="{{ url('/') }}#templates">Compare</a>
       <a href="{{ url('/') }}#pricing">Pricing</a>
       <a href="{{ route('blog.index') }}">Blog</a>
     </nav>

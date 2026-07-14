@@ -3,6 +3,7 @@
 namespace App\Filament\Widgets;
 
 use App\Models\AiUsage;
+use App\Models\NewsletterSubscriber;
 use App\Models\User;
 use Filament\Widgets\StatsOverviewWidget as BaseWidget;
 use Filament\Widgets\StatsOverviewWidget\Stat;
@@ -34,6 +35,8 @@ class DashboardStats extends BaseWidget
 
         $monthlyProfit = $monthlyRevenue - $monthlyExpenses;
 
+        $newsletterSubscribers = NewsletterSubscriber::count();
+
         return [
             Stat::make('Total users', $totalUsers)
                 ->description('All accounts, including guests')
@@ -59,6 +62,11 @@ class DashboardStats extends BaseWidget
                 ->description('Revenue minus expenses')
                 ->icon('heroicon-o-chart-bar')
                 ->color($monthlyProfit < 0 ? 'danger' : 'success'),
+
+            Stat::make('Newsletter subscribers', $newsletterSubscribers)
+                ->description('Total signups from the homepage form')
+                ->icon('heroicon-o-at-symbol')
+                ->color('primary'),
         ];
     }
 }

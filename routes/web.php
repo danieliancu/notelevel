@@ -5,6 +5,7 @@ use App\Http\Controllers\BillingController;
 use App\Http\Controllers\BlogController;
 use App\Http\Controllers\CanvasAiController;
 use App\Http\Controllers\CanvasApiController;
+use App\Http\Controllers\ContactController;
 use App\Http\Controllers\DemoController;
 use App\Http\Controllers\DocumentController;
 use App\Http\Controllers\FavouriteController;
@@ -12,6 +13,7 @@ use App\Http\Controllers\FolderController;
 use App\Http\Controllers\HealthController;
 use App\Http\Controllers\LegalController;
 use App\Http\Controllers\MarketingController;
+use App\Http\Controllers\NewsletterController;
 use App\Http\Controllers\PdfController;
 use App\Http\Controllers\PdfFolderController;
 use App\Http\Controllers\ProfileController;
@@ -35,6 +37,15 @@ Route::domain(config('domains.marketing'))->group(function () {
     Route::get('/privacy', [LegalController::class, 'privacy'])->name('privacy');
     Route::get('/terms', [LegalController::class, 'terms'])->name('terms');
     Route::get('/cookies', [LegalController::class, 'cookies'])->name('cookies');
+
+    Route::get('/contact', [ContactController::class, 'show'])->name('contact');
+    Route::post('/contact', [ContactController::class, 'send'])
+        ->middleware('throttle:5,1')
+        ->name('contact.send');
+
+    Route::post('/newsletter/subscribe', [NewsletterController::class, 'subscribe'])
+        ->middleware('throttle:5,1')
+        ->name('newsletter.subscribe');
 
     Route::get('/sitemap.xml', [SitemapController::class, 'index'])->name('sitemap');
 

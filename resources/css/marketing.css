@@ -338,6 +338,12 @@ button { font: inherit; cursor: pointer; border: none; background: none; color: 
   }
 }
 
+.hero-badges {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 10px;
+}
+
 .badge {
   display: inline-flex;
   align-items: center;
@@ -924,6 +930,7 @@ button { font: inherit; cursor: pointer; border: none; background: none; color: 
   flex-direction: column;
   background: var(--color-card-bg);
 }
+.pricing-head { min-height: 178px; }
 .price-card h3 { font-size: 18px; font-weight: 700; margin-bottom: 6px; }
 .price-desc { font-size: 13.5px; color: var(--color-text-secondary); min-height: 40px; margin-bottom: 18px; }
 .price { display: flex; align-items: baseline; gap: 4px; margin-bottom: 18px; }
@@ -974,7 +981,6 @@ button { font: inherit; cursor: pointer; border: none; background: none; color: 
   padding: 28px;
   display: flex;
   flex-direction: column;
-  justify-content: center;
 }
 .pricing-cta h3 { font-size: 19px; font-weight: 700; margin-bottom: 10px; }
 .pricing-cta p { font-size: 14px; color: #c7d1d6; margin-bottom: 20px; }
@@ -1031,6 +1037,16 @@ button { font: inherit; cursor: pointer; border: none; background: none; color: 
 .newsletter-field input::placeholder { color: #8d99a1; }
 .newsletter-field input:focus { outline: 2px solid var(--color-accent); outline-offset: 2px; }
 
+.newsletter-error { display: block; color: #ff9b9b; font-size: 13px; margin-top: 8px; }
+
+.newsletter-status {
+  text-align: center;
+  font-size: 14px;
+  font-weight: 600;
+  color: var(--color-accent-soft);
+  margin: 0 0 12px;
+}
+
 .newsletter-disclaimer {
   text-align: center;
   font-size: 12px;
@@ -1053,6 +1069,54 @@ button { font: inherit; cursor: pointer; border: none; background: none; color: 
 .legal-body p { color: var(--color-text-secondary); font-size: 15px; line-height: 1.75; margin-bottom: 18px; }
 .legal-body p:last-child { margin-bottom: 0; }
 
+/* ============ Contact form ============ */
+.contact-status {
+  background: var(--color-accent-soft);
+  color: var(--color-accent-dark);
+  border-radius: var(--radius-sm);
+  padding: 14px 18px;
+  font-size: 14px;
+  font-weight: 600;
+  margin-bottom: 28px;
+}
+
+.contact-form { display: flex; flex-direction: column; gap: 20px; }
+
+.contact-form-row { display: grid; grid-template-columns: 1fr 1fr; gap: 20px; }
+@media (max-width: 600px) {
+  .contact-form-row { grid-template-columns: 1fr; }
+}
+
+.contact-field { display: flex; flex-direction: column; gap: 6px; }
+
+.contact-field label { font-size: 14px; font-weight: 600; color: var(--color-text-primary); }
+
+.contact-field input,
+.contact-field textarea {
+  font-family: var(--font-family);
+  font-size: 15px;
+  color: var(--color-text-primary);
+  background: var(--color-bg);
+  border: 1px solid var(--color-border);
+  border-radius: var(--radius-sm);
+  padding: 12px 14px;
+  resize: vertical;
+}
+
+.contact-field input:focus,
+.contact-field textarea:focus {
+  outline: none;
+  border-color: var(--color-accent);
+  box-shadow: 0 0 0 3px var(--color-accent-soft);
+}
+
+.contact-field-error { color: #c0392b; font-size: 13px; }
+
+.contact-form .btn { align-self: flex-start; }
+@media (max-width: 600px) {
+  .contact-form .btn { align-self: stretch; }
+}
+
 /* ============ Footer ============ */
 .site-footer {
   border-top: 1px solid var(--color-border);
@@ -1060,27 +1124,16 @@ button { font: inherit; cursor: pointer; border: none; background: none; color: 
 }
 .footer-inner {
   display: flex;
-  align-items: center;
+  align-items: flex-start;
   flex-wrap: wrap;
   gap: 20px 32px;
   justify-content: space-between;
 }
+.footer-brand { display: flex; flex-direction: column; gap: 10px; }
 .copyright { font-size: 13px; color: var(--color-text-secondary); }
 .footer-links { display: flex; flex-wrap: wrap; gap: 18px; }
 .footer-links a { font-size: 13.5px; color: var(--color-text-secondary); }
 .footer-links a:hover { color: var(--color-text-primary); }
-.social-icons { display: flex; gap: 14px; }
-.social-icons a {
-  width: 32px;
-  height: 32px;
-  display: flex;
-  align-items: center;
-  justify-content: center;
-  border-radius: 8px;
-  border: 1px solid var(--color-border);
-  color: var(--color-text-secondary);
-}
-.social-icons a:hover { color: var(--color-accent); border-color: var(--color-accent); }
 
 @media (max-width: 700px) {
   .footer-inner { flex-direction: column; align-items: flex-start; }

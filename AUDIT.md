@@ -594,9 +594,11 @@ Detalii complete ale planului (inclusiv întrebările deschise de produs/design 
 
 **Ce NU am testat automat, deliberat**: `BillingController::checkout()` nu are test automat — ar apela API-ul **live** real al Stripe (creează un Customer + o Checkout Session reale în contul live), ceea ce nu e potrivit pentru o suită de teste rulată des. Verificat doar logica de business (webhook) cu chei/semnături simulate.
 
+**Actualizare 14 iulie 2026**: webhook secret configurat (`STRIPE_WEBHOOK_SECRET` prezent în `.env`, endpoint creat în Stripe Dashboard) și testarea end-to-end reală a fost efectuată de user — ambele puncte de mai jos (1 și 2) sunt **rezolvate**.
+
 **Ce rămâne de făcut, cu userul:**
-1. **Webhook secret** — încă nu există. Trebuie creat un endpoint în Stripe (Developers → Webhooks → Add endpoint), URL = domeniul public real + `/stripe/webhook`, evenimente: `checkout.session.completed`, `customer.subscription.updated`, `customer.subscription.deleted`. Stripe generează atunci un `whsec_...` de pus în `.env` ca `STRIPE_WEBHOOK_SECRET`.
-2. **Testare end-to-end** — deoarece cheile sunt Live, orice checkout complet va taxa real 35 RON. De discutat cu userul cum vrea să verifice fluxul complet (card real + rambursare manuală ulterioară, sau expunere temporară a mediului local printr-un tunel public ca Stripe să poată livra webhook-ul către acest dev environment).
+1. ~~**Webhook secret** — încă nu există...~~ ✅ Rezolvat 14 iulie 2026.
+2. ~~**Testare end-to-end**...~~ ✅ Rezolvat 14 iulie 2026.
 3. Fără portal de gestionare a abonamentului (anulare/schimbare card) — userul ar trebui direcționat către Stripe Customer Portal pentru asta, neconstruit încă.
 
 **Extindere — checkout pentru vizitatori neautentificați (13 iulie 2026):**
@@ -664,4 +666,6 @@ Separat de butonul de pe pagina de marketing (deja funcțional din integrarea St
 
 ### Verificare
 
-Suita completă de teste PHP a rulat verde după fiecare grupă de schimbări din această secțiune (**72 teste, 234 assertions** la final, fără regresii). `npm run build` (Vite) rulat de fiecare dată după modificări în `canvas.js`/`canvas.css`/`marketing.css` pentru ca schimbările să ajungă în bundle-ul servit prin XAMPP. Fluxurile de UI (buton upgrade din modal, ștergere cont inline, toast de status, badge/butoane dispărute la pricing) **nu au fost verificate manual în browser** în cadrul acestei sesiuni — rămâne recomandarea generală deja făcută în document (secțiunea "Limitări") de validare dinamică reală înainte de producție.
+Suita completă de teste PHP a rulat verde după fiecare grupă de schimbări din această secțiune (**72 teste, 234 assertions** la final, fără regresii). `npm run build` (Vite) rulat de fiecare dată după modificări în `canvas.js`/`canvas.css`/`marketing.css` pentru ca schimbările să ajungă în bundle-ul servit prin XAMPP.
+
+**Actualizare 14 iulie 2026**: validarea manuală în browser a fluxurilor de UI (buton upgrade din modal, ștergere cont inline, toast de status, badge/butoane dispărute la pricing) a fost efectuată de user — **rezolvat**. Recomandarea generală de validare dinamică (accesibilitate NVDA/VoiceOver, axe, Lighthouse — vezi UX-01 și secțiunea "Limitări") rămâne totuși deschisă ca elemente separate, nemenționate ca acoperite.

@@ -13,7 +13,7 @@ class LegalController extends Controller
             'description' => 'How Notelevel collects, uses and protects your data.',
             'updatedAt' => 'July 10, 2026',
             'paragraphs' => [
-                "Notelevel's operator is the controller of personal data processed through this service. Privacy requests and questions can be sent to {$contact}.",
+                "Notelevel is operated by GREEN HORIZON CONCEPTS S.R.L., a company registered in Romania (registered office: Bucureşti, Sector 3, Strada Idealului, Nr. 40; unique registration code / CUI 51006687; trade register number J2024047618008), which acts as the controller of personal data processed through this service. Privacy requests and questions can be sent to {$contact}.",
                 'We process account data (name, email address, password hash, plan and account dates), security data (IP address, session and authentication records), notebook content, imported PDFs, favourites, and technical usage records required to operate limits and diagnose failures.',
                 'When you choose an AI feature, the relevant text, instructions, page context or image is sent to our configured AI provider to produce the requested result. Do not submit highly sensitive personal data unless it is necessary and you are authorised to do so. AI usage metadata, token counts and estimated cost are retained for limits and operational accounting.',
                 'We use this information to provide the service and fulfil our contract with you, secure and prevent abuse of the service, comply with legal obligations, and pursue legitimate interests such as reliability and product improvement. Where consent is legally required, we will request it separately.',
@@ -33,7 +33,7 @@ class LegalController extends Controller
             'description' => 'The terms that govern your use of Notelevel.',
             'updatedAt' => 'July 10, 2026',
             'paragraphs' => [
-                'These Terms of Service govern your access to and use of Notelevel. By creating an account or using the product, you agree to these terms. If you do not agree with them, please do not use the service.',
+                'These Terms of Service govern your access to and use of Notelevel, a product operated by GREEN HORIZON CONCEPTS S.R.L. (registered office: Bucureşti, Sector 3, Strada Idealului, Nr. 40, Romania; CUI 51006687; trade register number J2024047618008). By creating an account or using the product, you agree to these terms. If you do not agree with them, please do not use the service.',
                 'You must provide accurate registration information, protect your password and notify us if you believe the account has been compromised. Password recovery is temporarily unavailable, so a forgotten password may make the account inaccessible.',
                 'You retain ownership of your content and grant Notelevel the limited rights required to host, process, back up, transform and transmit it solely to provide features you request, including AI processing. You confirm that you have the rights needed to upload and process that content.',
                 'You must not use the service unlawfully, infringe others\' rights, upload malicious material, attempt unauthorised access, evade quotas, automate abusive requests or disrupt the service. We may restrict or terminate access needed to protect users and infrastructure.',
