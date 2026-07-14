@@ -8,8 +8,8 @@
 > **Actualizare remediere — 10 iulie 2026:** lucrările tehnice P2 au fost implementate. Starea curentă are **51 teste trecute, 166 assertions**, Pint verde, două migrări P1/P2 aplicate și build Vite reușit. API-ul legacy are termen de retragere, colecțiile sunt paginate, autosave-ul este idempotent, sitemapul este invalidat imediat, iar canvasul are focus/dialog/motion semantics îmbunătățite. Validarea manuală cu NVDA/VoiceOver rămâne necesară deoarece browserul automat nu a fost disponibil.
 
 In plus, de facut:
-- posibilitatea de a face zoom
-- securizarea informatiilor (nimeni sa nu poata sa vada ce e acolo, sa fie criptat 100%)
+- posibilitatea de a face zoom — **încă neimplementat** (verificat 14 iulie 2026: niciun cod de zoom în `resources/js/canvas.js`)
+- securizarea informatiilor (nimeni sa nu poata sa vada ce e acolo, sa fie criptat 100%) — **încă neimplementat** (verificat 14 iulie 2026: discul `tenants` din `config/filesystems.php` stochează fișierele necriptat; nu există `Crypt::` folosit pe conținutul userilor, doar config-ul standard Laravel de sesiune/cookie)
 
 > **Actualizare audit — 13 iulie 2026:** re-verificare critică a stării curente, 3 zile după remedierea P2. Verdictul **rămâne "nu este pregătită pentru producție"**.
 >
@@ -26,37 +26,50 @@ In plus, de facut:
 > - **21 de apeluri `renderCurrentPage().catch(error => console.error(error))`** în `canvas.js` — pattern fire-and-forget repetat masiv; o randare eșuată lasă canvasul vizual desincronizat de model, fără nicio indicație pentru utilizator. Aceeași clasă de bug ca două bug-uri de randare deja reparate azi (crash pe mobil la `/translate` prin `virtualKeyboardTarget`, și o cursă de randare la crearea formelor colorate prin AI).
 > - **Fără avertisment la închiderea tab-ului cu modificări nesalvate** (`beforeunload` scrie doar în `localStorage`) — combinat cu lipsa de retry la eșecul de salvare, risc real de pierdere silențioasă a muncii utilizatorului.
 
+> **Actualizare audit — 14 iulie 2026:** re-verificare completă, o zi după ultima actualizare. Toate elementele **P0, P1 și P2** din roadmap-ul de mai jos sunt acum ✅ **confirmate prin cod, teste automate și verificare vizuală reală în browser** (Playwright, autentificat efectiv în `/admin` și în fluxurile publice) — nu doar prin citire de cod, corectând limitarea semnalată explicit pe 13 iulie. Suita de teste: **84 teste, 267 assertions**, verde. Repository-ul are acum istoric Git real (14 commit-uri) și e împins pe `origin/main` (GitHub) — limitarea "fără metadata Git" de pe 10 iulie nu mai e valabilă.
+>
+> **Verdictul se schimbă din "nu este pregătită" în "pregătită condiționat"** — vezi verdictul detaliat din secțiunea 1. Blocajele de securitate/integritate a datelor din auditul inițial (SEC-01, DATA-01, AI-01, AI-02, TEST-01, AUTH-01 parțial) sunt închise. Ce rămâne deschis nu mai ține de siguranța de bază a aplicației, ci de: două cerințe explicite ale userului încă neimplementate (zoom, criptare completă a conținutului), validare manuală de accesibilitate niciodată efectuată de un om, lipsa unui backup configurat, și câteva verificări de configurare specifice mediului de producție (Forge) care nu pot fi confirmate din acest mediu de dezvoltare local.
+>
+> **Descoperire nouă azi — bug real de mediu, nu de cod (vezi OPS-02 mai jos):** panoul admin întorcea `500` pe *orice* pagină (`RuntimeException: The "intl" PHP extension is required`) din cauza unei nepotriviri de căutare de DLL-uri Windows între directorul Apache și directorul PHP din XAMPP — `intl` funcționa perfect în CLI (folosit de suita de teste), dar eșua silențios sub `mod_php`. Concluzia importantă: **suita de teste PHPUnit, care rulează exclusiv prin CLI, nu ar fi putut niciodată detecta acest bug** — a fost prins doar pentru că userul a accesat efectiv panoul din browser. Fix aplicat local (copiere DLL-uri ICU lângă `httpd.exe`) e specific XAMPP și **nu se aplică pe Forge** (php-fpm, altă topologie de directoare) — dar recomandarea rămâne validă acolo: verifică explicit `php -m | grep intl` cu binarul PHP folosit efectiv de php-fpm/Forge, nu doar cu binarul din CLI, înainte de a considera deploy-ul reușit.
+
 ## 1. Rezumat executiv
 
 ### Verdict
 
-**NU ESTE PREGĂTITĂ PENTRU PRODUCȚIE.** Aplicația are o bază funcțională promițătoare — autentificare Laravel, administrare Filament, separare logică pe tenant, cote de plan, SEO de bază și build de producție valid — dar lansarea trebuie blocată până la rezolvarea constatărilor P0.
+**PREGĂTITĂ CONDIȚIONAT PENTRU PRODUCȚIE** (actualizat 14 iulie 2026; verdictul inițial de mai jos, din 10 iulie, e păstrat ca istoric). Toate blocajele critice și ridicate din auditul inițial — endpoint mutabil prin GET, runtime inconsistent, integritate DB–filesystem, cost AI necontrolat, suită de teste roșie — sunt închise, verificate prin teste automate și, parțial, prin verificare manuală reală în browser. Plățile (Stripe, mod Live) și verificarea de email (Resend) sunt funcționale și testate cu date reale. Lansarea poate avea loc dacă echipa acceptă explicit riscurile reziduale enumerate în "Ce rămâne deschis" din actualizarea de 14 iulie de mai sus — în principal: lipsa unui backup configurat, validarea de accesibilitate nefăcută de un om, și lipsa criptării complete a conținutului (cerută explicit de user, neimplementată încă).
+
+**Verdictul original, 10 iulie 2026 (istoric):** NU ESTE PREGĂTITĂ PENTRU PRODUCȚIE. Aplicația are o bază funcțională promițătoare — autentificare Laravel, administrare Filament, separare logică pe tenant, cote de plan, SEO de bază și build de producție valid — dar lansarea trebuie blocată până la rezolvarea constatărilor P0.
 
 Blocajul principal de securitate este endpointul legacy `/canvas/api`: ruta acceptă atât `GET`, cât și `POST`, iar același dispatcher execută acțiuni de scriere și ștergere. O navigare GET autentificată poate ajunge la operații distructive fără protecția CSRF rezervată metodelor mutante. Alte riscuri importante sunt accesul utilizatorilor neverificați la API-urile canvas, lipsa tranzacțiilor între baza de date și fișiere, controlul concurent insuficient al costului AI și o suită de teste care eșuează și nu acoperă funcțiile centrale.
 
 ### Scoruri orientative
 
-| Domeniu | Scor | Observație |
-|---|---:|---|
-| Securitate aplicație | 4/10 | Izolare Eloquent bună ca intenție, dar endpoint GET mutabil și suprafață API insuficient protejată |
-| Autentificare și autorizare | 6/10 | Breeze, verificare email pentru dashboard și acces admin corect; API-urile nu cer `verified` |
-| Multi-tenancy și date | 6/10 | Scope global și căi per utilizator; dependență fragilă de contextul `auth()` și lipsă teste de izolare |
-| AI și control cost | 5/10 | Cap și jurnalizare existente; verificarea nu este atomică și nu există throttling dedicat |
-| Arhitectură și mentenanță | 4/10 | Două API-uri paralele și un bundle canvas monolitic de ~9.739 linii |
-| Testare și livrare | 3/10 | 26 teste trec, 1 eșuează; nucleul produsului rămâne netestat |
-| Performanță | 6/10 | Build rezonabil comprimat; operații sincrone grele și încărcări nepaginate în canvas |
-| UX și accesibilitate | 5/10 | Interfață bogată, însă auditul dinamic este indisponibil și există controale construite manual |
-| SEO și conținut | 7/10 | Sitemap, robots, canonical/OG și noindex există; invalidarea și paginile taxonomice necesită atenție |
-| Legal și confidențialitate | 3/10 | Texte generice, fără detalierea procesatorului AI, retenției și bazei legale |
+**Coloana din 10 iulie e păstrată ca istoric; coloana din 14 iulie reflectă starea curentă.**
+
+| Domeniu | Scor (10 iul) | Scor (14 iul) | Observație curentă |
+|---|---:|---:|---|
+| Securitate aplicație | 4/10 | 8/10 | GET mutabil eliminat, CSP activ, escaping corect; rămâne fără rate limiting la `/register` (AUTH-02, nou) |
+| Autentificare și autorizare | 6/10 | 8/10 | `verified` aplicat pe API-uri și dashboard, email real prin Resend; recuperare parolă tot indisponibilă (decizie asumată) |
+| Multi-tenancy și date | 6/10 | 7/10 | Teste cross-tenant adăugate; TEN-01 (context implicit `auth()`) rămâne arhitectural neschimbat |
+| AI și control cost | 5/10 | 8/10 | Rezervări atomice de buget, throttling per utilizator, toate planurile testate |
+| Arhitectură și mentenanță | 4/10 | 5/10 | Migrare autosave reală completă (nu doar cod mort); canvas monolitic încă nerefactorizat (P3) |
+| Testare și livrare | 3/10 | 8/10 | 84 teste, 267 assertions, verde; CI/CD tot neconfigurat formal (nevalidat pe Forge) |
+| Performanță | 6/10 | 6/10 | Neschimbată; paginare adăugată la P2, restul PERF-01 rămâne |
+| UX și accesibilitate | 5/10 | 6/10 | Focus/dialog/motion reparate și testate static; NVDA/VoiceOver tot nefăcut de un om |
+| SEO și conținut | 7/10 | 7/10 | Neschimbată |
+| Legal și confidențialitate | 3/10 | 6/10 | Politici rescrise cu identitate reală a operatorului (GREEN HORIZON CONCEPTS S.R.L.); nu acoperă încă datele din formularul de contact/newsletter (LEG-02, nou) și n-a trecut de o validare juridică umană |
+| Plăți și facturare | — | 8/10 | Nou: Stripe live, webhook semnat, checkout guest, testat cu tranzacții reale |
 
 ### Distribuția constatărilor
 
-| Severitate | Număr | Semnificație |
-|---|---:|---|
-| Critic | 1 | Poate produce pierdere de date sau compromitere semnificativă; blochează lansarea |
-| Ridicat | 6 | Impact major sau probabilitate relevantă; necesită remediere înainte de producție |
-| Mediu | 8 | Reduce robustețea, securitatea în profunzime sau calitatea produsului |
-| Scăzut | 4 | Datorie tehnică ori îmbunătățire cu impact limitat |
+**Actualizat 14 iulie 2026** — include cele 3 constatări noi din verificarea de azi (AUTH-02, LEG-02, OPS-02). Marea majoritate a constatărilor de mai jos sunt ✅ rezolvate — vezi starea individuală la fiecare constatare și roadmap-ul din secțiunea 8 pentru ce mai e deschis efectiv.
+
+| Severitate | Număr total | Din care încă deschise | Semnificație |
+|---|---:|---:|---|
+| Critic | 1 | 0 | Poate produce pierdere de date sau compromitere semnificativă; blochează lansarea |
+| Ridicat | 8 | 2 (AUTH-02, OPS-02 parțial) | Impact major sau probabilitate relevantă; necesită remediere înainte de producție |
+| Mediu | 10 | 4 (TEN-01, PERF-01, UX-01, LEG-02) | Reduce robustețea, securitatea în profunzime sau calitatea produsului |
+| Scăzut | 4 | 3 (OBS-01 parțial, ARC-01, DOC-01) | Datorie tehnică ori îmbunătățire cu impact limitat |
 
 ## 2. Metodologie și limite
 
@@ -139,6 +152,20 @@ Absența advisory-urilor nu demonstrează securitatea codului propriu și nu red
 **Remediere:** mută toate API-urile de produs în grupul `auth, verified`; exceptează explicit doar conturile demo dacă aceasta este politica dorită și testează separat rolul `guest`.
 
 **Criteriu de verificare:** un utilizator neverificat primește redirect/403 pentru toate API-urile de produs; utilizatorul verificat și guest-ul autorizat au comportamentul documentat.
+
+### AUTH-02 — `/register` nu are rate limiting (nou, 14 iulie 2026)
+
+**Severitate:** Ridicat  
+**Stare:** Confirmată  
+**Domeniu:** abuz, autentificare
+
+**Dovadă:** `routes/auth.php:13-16` definește `POST register` fără middleware `throttle`, spre deosebire de `verification.send`/`verification.verify` care au `throttle:6,1` (liniile 30, 34). Login-ul are propriul rate limiting Breeze implicit, dar înregistrarea nu.
+
+**Impact:** creare în masă de conturi neverificate (bot/script), fiecare capabil să consume imediat cota AI (£0.10/lună) și storage-ul din planul Free, fără nicio frecare.
+
+**Remediere:** adaugă `throttle:6,1` (sau un limiter dedicat, mai strict, per IP) pe ruta `POST /register`.
+
+**Criteriu de verificare:** peste N încercări de înregistrare de pe același IP într-un interval, request-urile suplimentare primesc `429`.
 
 ### DATA-01 — Operațiile DB–filesystem nu sunt atomice și erorile storage sunt silențioase
 
@@ -336,6 +363,34 @@ Absența advisory-urilor nu demonstrează securitatea codului propriu și nu red
 
 **Criteriu de verificare:** data map-ul și configurația reală corespund textelor publice și există proceduri testate pentru solicitările persoanelor vizate.
 
+### LEG-02 — Politica de confidențialitate nu acoperă datele din formularul de contact și newsletter (nou, 14 iulie 2026)
+
+**Severitate:** Mediu  
+**Stare:** Confirmată  
+**Domeniu:** legal, confidențialitate
+
+**Dovadă:** `LegalController::privacy()` enumeră explicit tipurile de date colectate (cont, securitate, conținut notebook, PDF-uri, favorite) dar nu menționează cele două categorii noi introduse azi: mesajele din `/contact` (`ContactMessage`: nume, telefon, email, text liber) și adresele din formularul de newsletter (`NewsletterSubscriber`). Ambele sunt stocate permanent în baza de date și vizibile în panoul admin, fără politică de retenție declarată.
+
+**Impact:** informare incompletă către utilizator despre o categorie reală de date personale colectate; nealiniere între ce spune politica și ce face aplicația (aceeași clasă de problemă ca LEG-01 original).
+
+**Remediere:** adaugă un paragraf în `/privacy` care menționează formularul de contact și newsletter-ul, scopul (răspuns la cereri / trimitere de update-uri de produs), temeiul (consimțământ explicit la newsletter, interes legitim la contact) și retenția.
+
+**Criteriu de verificare:** textul din `/privacy` menționează explicit `ContactMessage`/`NewsletterSubscriber` ca și categorii de date, cu scop și retenție declarate.
+
+### OPS-02 — Extensia `intl` poate eșua silențios sub server web, deși CLI o raportează activă (nou, 14 iulie 2026)
+
+**Severitate:** Ridicat  
+**Stare:** Confirmată și reprodusă; fix local aplicat, **neconfirmată pe infrastructura de producție (Forge)**  
+**Domeniu:** operare, deployment
+
+**Dovadă:** panoul `/admin` întorcea `500` (`RuntimeException: The "intl" PHP extension is required to use the [format] method.`, `Number.php:453`) pe orice pagină Filament care formata numere, deși `php -m` din CLI raporta `intl` activ. Cauza: `php_intl.dll` are nevoie de 4 DLL-uri ICU aflate lângă `php.exe`; Apache (`httpd.exe`) rulează dintr-un director diferit și nu le găsea, eșec logat doar în `apache/logs/error.log` ca `PHP Warning: Unable to load dynamic library 'intl'` — invizibil pentru `php artisan test`, care rulează exclusiv prin CLI.
+
+**Impact:** o extensie confirmată "activă" prin verificare CLI poate fi complet nefuncțională sub SAPI-ul real folosit de web server, fără ca suita de teste s-o detecteze vreodată. Orice verificare de tip "am rulat `php -m`, e ok" e insuficientă.
+
+**Remediere:** pe Forge (php-fpm), rulează explicit `php -m | grep intl` folosind binarul PHP configurat pentru site (nu binarul implicit din `PATH` dacă diferă), și testează efectiv o pagină din `/admin` în browser după orice deploy sau schimbare de versiune PHP. Nu presupune că un rezultat CLI reflectă comportamentul FPM/mod_php.
+
+**Criteriu de verificare:** `/admin` și orice pagină care folosește `Number::format()`/`intl` se încarcă cu `200` în producție, verificat printr-o cerere HTTP reală, nu doar prin `artisan`.
+
 ### OBS-01 — Lipsesc observabilitatea și obiectivele operaționale explicite
 
 **Severitate:** Scăzut  
@@ -446,20 +501,29 @@ Aceste elemente nu sunt prezentate automat ca vulnerabilități:
 
 ### P3 — îmbunătățiri
 
-1. Modularizează canvas JS/CSS cu teste de caracterizare.
-2. Actualizează documentația și runbook-urile.
-3. Adaugă bugete de performanță și monitorizare Web Vitals.
-4. Clarifică fluxul demo → cont și funcțiile placeholder pe baza metricilor de produs.
+1. Modularizează canvas JS/CSS cu teste de caracterizare. *(neînceput)*
+2. Actualizează documentația și runbook-urile. *(neînceput — README tot generic)*
+3. Adaugă bugete de performanță și monitorizare Web Vitals. *(neînceput)*
+4. Clarifică fluxul demo → cont și funcțiile placeholder pe baza metricilor de produs. *(parțial — placeholder-ul "Infographics" încă există în bibliotecă, dar homepage-ul nu mai promite funcția, vezi secțiunea 15)*
+
+### P4 — cerute explicit de user, încă deschise (14 iulie 2026)
+
+1. **Zoom pe canvas** — neimplementat.
+2. **Criptare completă a conținutului utilizatorilor** ("nimeni să nu poată vedea ce e acolo") — neimplementat; fișierele din discul `tenants` sunt stocate în clar.
+3. **Backup configurat** — tot neimplementat (nici `spatie/laravel-backup`, nici `SoftDeletes` pe modelele cu conținut).
+4. **Rate limiting la `/register`** (AUTH-02) — tot neimplementat.
+5. **Validare manuală de accesibilitate** (NVDA/VoiceOver, axe) — niciodată efectuată de un om, doar verificări statice.
 
 ### Quick wins
 
-- Schimbă ruta legacy din `GET|POST` în POST pentru mutații și whitelist pentru reads.
-- Adaugă `verified` pe grupul API.
-- Schimbă cerința PHP în `^8.3` și valideaz-o în CI.
-- Folosește `textContent` pentru nume/email în panoul de cont.
-- Adaugă `max` și verificarea `max_favourites` la upload.
-- Activează `throw`/`report` pe storage în producție.
-- Înlocuiește README-ul generic cu instrucțiuni minime reproductibile.
+- ✅ Schimbă ruta legacy din `GET|POST` în POST pentru mutații și whitelist pentru reads.
+- ✅ Adaugă `verified` pe grupul API.
+- ✅ Schimbă cerința PHP în `^8.3` și valideaz-o în CI.
+- ✅ Folosește `textContent` pentru nume/email în panoul de cont.
+- ✅ Adaugă `max` și verificarea `max_favourites` la upload.
+- ✅ Activează `throw`/`report` pe storage în producție.
+- Înlocuiește README-ul generic cu instrucțiuni minime reproductibile. *(încă deschis)*
+- Adaugă `throttle` pe `POST /register` (AUTH-02). *(nou, încă deschis)*
 
 ## 9. Plan minim de teste necesare
 
@@ -501,17 +565,21 @@ Aceste elemente nu sunt prezentate automat ca vulnerabilități:
 
 Lansarea poate fi reconsiderată numai când:
 
-1. toate elementele P0 sunt închise și demonstrate prin teste;
-2. suita rulează verde într-un mediu curat și în CI;
-3. testele de izolare cross-tenant și CSRF sunt verzi;
-4. storage failure nu produce succes fals sau pierdere de date;
-5. costul AI are limitare atomică și throttling;
-6. politicile legale reflectă procesarea reală;
-7. există monitorizare și procedură de rollback.
+1. ✅ toate elementele P0 sunt închise și demonstrate prin teste;
+2. ✅ suita rulează verde într-un mediu curat (84 teste, 267 assertions) — **CI tot neconfigurat formal**, rulat doar manual;
+3. ✅ testele de izolare cross-tenant și CSRF sunt verzi;
+4. ✅ storage failure nu produce succes fals sau pierdere de date;
+5. ✅ costul AI are limitare atomică și throttling;
+6. ✅ politicile legale reflectă procesarea reală (excepție: LEG-02, datele din contact/newsletter, și lipsa unei validări juridice umane);
+7. ✅ există monitorizare și procedură de rollback de bază (`/health/ready`, loguri structurate, webhook de alertă) — fără agregare/dashboard real.
+
+**Toate cele 7 condiții sunt substanțial îndeplinite la 14 iulie 2026.** Ce nu e acoperit de nicio condiție de mai sus, dar rămâne relevant pentru decizia de lansare: backup, criptare la rest, zoom, rate limiting la înregistrare, accesibilitate validată de un om — vezi P4 în secțiunea 8.
 
 ## 10. Concluzie
 
-Notelevel este mai aproape de un prototip avansat decât de un serviciu pregătit pentru producție. Fundația Laravel și modelarea domeniului sunt suficiente pentru a continua, iar build-ul și dependențele nu indică probleme imediate. Totuși, endpointul legacy mutabil prin GET, inconsistența runtime-ului, lipsa atomicității storage și acoperirea de test insuficientă fac riscul de lansare inacceptabil în forma actuală.
+**Actualizare 14 iulie 2026:** concluzia de mai jos, din 10 iulie, e păstrată ca istoric — reflecta corect starea de atunci. Starea curentă e fundamental diferită: toate blocajele descrise (endpoint GET mutabil, runtime inconsistent, atomicitate storage, acoperire de test) sunt rezolvate și verificate, plățile Stripe funcționează live cu tranzacții reale, iar verificarea de email e activă prin Resend. Notelevel a trecut de la "prototip avansat" la "produs funcțional cu plăți reale", dar nu e încă un serviciu complet operat: nu are backup, nu are criptare la rest pentru conținutul userilor, nu are CI/CD formal, iar accesibilitatea n-a fost niciodată validată de un om cu un cititor de ecran real. Recomandarea practică: **poate lansa** dacă echipa acceptă explicit aceste riscuri reziduale ca fiind cunoscute și tolerabile pe termen scurt, cu un angajament clar de a rezolva măcar backup-ul și criptarea (cerute explicit) într-un interval scurt post-lansare.
+
+**Concluzia originală, 10 iulie 2026 (istoric):** Notelevel este mai aproape de un prototip avansat decât de un serviciu pregătit pentru producție. Fundația Laravel și modelarea domeniului sunt suficiente pentru a continua, iar build-ul și dependențele nu indică probleme imediate. Totuși, endpointul legacy mutabil prin GET, inconsistența runtime-ului, lipsa atomicității storage și acoperirea de test insuficientă fac riscul de lansare inacceptabil în forma actuală.
 
 Ordinea corectă este: securizarea contractelor HTTP, stabilizarea mediului și a testelor, garantarea integrității/izolării datelor, apoi controlul AI și auditul UX dinamic. Refactorizarea monolitului canvas trebuie făcută ulterior, incremental, după introducerea testelor de caracterizare.
 
@@ -669,3 +737,46 @@ Separat de butonul de pe pagina de marketing (deja funcțional din integrarea St
 Suita completă de teste PHP a rulat verde după fiecare grupă de schimbări din această secțiune (**72 teste, 234 assertions** la final, fără regresii). `npm run build` (Vite) rulat de fiecare dată după modificări în `canvas.js`/`canvas.css`/`marketing.css` pentru ca schimbările să ajungă în bundle-ul servit prin XAMPP.
 
 **Actualizare 14 iulie 2026**: validarea manuală în browser a fluxurilor de UI (buton upgrade din modal, ștergere cont inline, toast de status, badge/butoane dispărute la pricing) a fost efectuată de user — **rezolvat**. Recomandarea generală de validare dinamică (accesibilitate NVDA/VoiceOver, axe, Lighthouse — vezi UX-01 și secțiunea "Limitări") rămâne totuși deschisă ca elemente separate, nemenționate ca acoperite.
+
+## 14. Formular de contact, newsletter, panou admin, bug `intl`/Apache, corectare texte homepage (14 iulie 2026)
+
+### Formular de contact și newsletter — stocare în DB + panou admin
+
+**Context**: cerința inițială era doar trimitere de email la `dani.iancu@yahoo.com`; userul s-a răzgândit și a cerut stocare în baza de date, vizibilă în admin.
+
+- Tabele noi `contact_messages` (nume, prenume, email, telefon, mesaj, timestamp) și `newsletter_subscribers` (email unic, timestamp), cu modele Eloquent corespunzătoare.
+- `ContactController::send()` și `NewsletterController::subscribe()` salvează în DB **și** continuă să trimită email (decizie: ambele canale, nu doar unul — nu era clar dacă emailul trebuie eliminat, păstrat ca fallback de notificare imediată).
+- Newsletter: `NewsletterSubscriber::firstOrCreate()` — reabonarea cu același email nu creează duplicate și nu retrimite emailul de notificare.
+- Rate limiting `throttle:5,1` pe ambele rute POST.
+- Panou Filament nou, grup de navigare „Contact": `ContactMessageResource` (căutare, ștergere, bulină roșie cu numărul de mesaje în sidebar — `getNavigationBadge()`) și `NewsletterSubscriberResource`. Card nou pe Dashboard cu numărul de abonați (`DashboardStats`).
+- Acces admin verificat automat (non-admin primește `403`).
+- Teste noi: `ContactFormTest`, `NewsletterSubscriptionTest`, `ContactAdminResourcesTest` (12 teste). Verificare end-to-end reală prin browser (Playwright): formular completat și trimis, înregistrare confirmată direct în baza de date MySQL locală, apoi ștearsă.
+- **Neacoperit de LEG-01/politica de confidențialitate** — vezi LEG-02, constatare nouă în secțiunea 4.
+
+### Logo Notelevel în emailuri (înlocuiește logo-ul Laravel)
+
+- Template-urile de mail Laravel (`resources/views/vendor/mail/...`, publicate explicit din vendor) foloseau implicit logo-ul Laravel (`laravel.com/img/notification-logo-v2.1.png`) ori de câte ori titlul header-ului coincidea cu `config('app.name')`.
+- Corectat: `resources/views/vendor/mail/html/header.blade.php` afișează acum `https://notelevel.com/marketing/favicon.png` (PNG, nu SVG — SVG nu se randează în Gmail).
+- Verificat prin randarea efectivă a `VerifyEmail` — HTML-ul generat conține `favicon.png`, fără nicio urmă de `laravel.com`.
+
+### OPS-02 — bug `intl`/Apache găsit și reparat local (vezi constatarea completă în secțiunea 4)
+
+Panoul `/admin` întorcea `500` pe orice pagină din cauza unei nepotriviri de căutare de DLL-uri ICU între directoarele Apache și PHP din XAMPP. Fix aplicat: copiere DLL-uri ICU lângă `httpd.exe`, urmat de restart Apache. **Fix specific mediului local XAMPP — trebuie reverificat independent pe Forge** înainte de a considera panoul admin funcțional în producție.
+
+### Corectare texte homepage — acuratețe față de funcționalitatea reală
+
+Verificare sistematică a copy-ului de marketing față de ce face aplicația efectiv (cod AI, cote de plan, funcții canvas), fără nicio schimbare de design:
+
+- **Funcții AI inexistente eliminate din promisiuni**: "Create infographics" (doar placeholder „Coming soon" în bibliotecă), "Explain homework" (nu există tutoring pas-cu-pas), "Improve notes" (nu există restructurare de notițe), "Clean up drawings" (redenumit corect „Perfect Shape", funcția reală).
+- **Contradicție eliminată**: hero promitea „Unlimited pages" ca beneficiu general, dar planul Free (implicit) are cap de 20 pagini — înlocuit cu „No credit card required".
+- **„Basic/Advanced AI tools" corectat**: toate planurile au exact aceleași acțiuni AI (`translate`, `chat`, `read`); diferă doar plafonul lunar de cost. Copy actualizat la „AI tools, monthly usage limit" vs „AI tools, no usage limit".
+- **„Unlimited notebooks" → „Unlimited pages"**: cota reală (`max_canvas_pages`) e pe pagini, nu pe număr de notebook-uri (care oricum nu e limitat pe niciun plan).
+- **Nav „Templates" → „Compare"**: nu există funcție de șabloane; link-ul ducea de fapt la tabelul comparativ reMarkable vs Notelevel.
+- **Card nou, cerut explicit**: „Edit & export PDFs" (înlocuiește un card AI redundant), reflectă fluxul real — import PDF, adnotare cu pen/text/shapes pe pagină, export înapoi în PDF (Premium) sau JPG.
+- **Hero**: a doua pastilă adăugată, „PDF Editing", lângă „100% In-Browser".
+- **Compare table, rând nou PDF** — **notă importantă**: userul a cerut inițial textul „reMarkable nu are PDF edit", dar asta e factual fals (adnotarea de PDF e una din funcțiile principale ale reMarkable). Reformulat cinstit: „PDF markup tied to the device" vs „Edit & export PDFs in any browser" — diferența reală (dependența de hardware propriu), nu o negare falsă a unei funcții reale a competitorului.
+- Verificare vizuală completă prin Playwright (capturi de ecran) pentru fiecare secțiune modificată, plus fix de aliniere CSS la cardurile de pricing (butoanele nu erau la aceeași înălțime din cauza unui `justify-content: center` pe cardul întunecat).
+
+### Verificare și livrare
+
+Suită completă: **84 teste, 267 assertions**, verde. `npm run build` curat. Toate schimbările din această secțiune au fost commit-uite și împinse pe `origin/main` (commit `836c0c0`, 49 fișiere) — primul push real al acestui proiect din perspectiva acestui audit; repository-ul are acum istoric Git verificabil.
