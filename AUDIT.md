@@ -8,8 +8,8 @@
 > **Actualizare remediere — 10 iulie 2026:** lucrările tehnice P2 au fost implementate. Starea curentă are **51 teste trecute, 166 assertions**, Pint verde, două migrări P1/P2 aplicate și build Vite reușit. API-ul legacy are termen de retragere, colecțiile sunt paginate, autosave-ul este idempotent, sitemapul este invalidat imediat, iar canvasul are focus/dialog/motion semantics îmbunătățite. Validarea manuală cu NVDA/VoiceOver rămâne necesară deoarece browserul automat nu a fost disponibil.
 
 In plus, de facut:
-- posibilitatea de a face zoom — **încă neimplementat** (verificat 14 iulie 2026: niciun cod de zoom în `resources/js/canvas.js`)
-- securizarea informatiilor (nimeni sa nu poata sa vada ce e acolo, sa fie criptat 100%) — **încă neimplementat** (verificat 14 iulie 2026: discul `tenants` din `config/filesystems.php` stochează fișierele necriptat; nu există `Crypt::` folosit pe conținutul userilor, doar config-ul standard Laravel de sesiune/cookie)
+- posibilitatea de a face zoom — **planificat pentru viitor, neurgent** (asumat explicit de user pe 14 iulie 2026; niciun cod de zoom în `resources/js/canvas.js`)
+- securizarea informatiilor (nimeni sa nu poata sa vada ce e acolo, sa fie criptat 100%) — **planificat pentru viitor, neurgent** (asumat explicit de user pe 14 iulie 2026; discul `tenants` stochează fișierele necriptat; recomandare: implementează backup-ul întâi, vezi P4 secțiunea 8)
 
 > **Actualizare audit — 13 iulie 2026:** re-verificare critică a stării curente, 3 zile după remedierea P2. Verdictul **rămâne "nu este pregătită pentru producție"**.
 >
@@ -62,14 +62,16 @@ Blocajul principal de securitate este endpointul legacy `/canvas/api`: ruta acce
 
 ### Distribuția constatărilor
 
-**Actualizat 14 iulie 2026** — include cele 3 constatări noi din verificarea de azi (AUTH-02, LEG-02, OPS-02). Marea majoritate a constatărilor de mai jos sunt ✅ rezolvate — vezi starea individuală la fiecare constatare și roadmap-ul din secțiunea 8 pentru ce mai e deschis efectiv.
+**Actualizat 14 iulie 2026, seara** — include cele 3 constatări noi din verificarea de azi (AUTH-02, LEG-02, OPS-02), toate acum închise sau parțial închise (vezi secțiunea 15). Marea majoritate a constatărilor de mai jos sunt ✅ rezolvate — vezi starea individuală la fiecare constatare și roadmap-ul din secțiunea 8 pentru ce mai e deschis efectiv.
 
 | Severitate | Număr total | Din care încă deschise | Semnificație |
 |---|---:|---:|---|
 | Critic | 1 | 0 | Poate produce pierdere de date sau compromitere semnificativă; blochează lansarea |
-| Ridicat | 8 | 2 (AUTH-02, OPS-02 parțial) | Impact major sau probabilitate relevantă; necesită remediere înainte de producție |
-| Mediu | 10 | 4 (TEN-01, PERF-01, UX-01, LEG-02) | Reduce robustețea, securitatea în profunzime sau calitatea produsului |
+| Ridicat | 8 | 0 | Impact major sau probabilitate relevantă; necesită remediere înainte de producție |
+| Mediu | 10 | 3 (TEN-01, PERF-01, UX-01 parțial — validare NVDA/VoiceOver rămasă) | Reduce robustețea, securitatea în profunzime sau calitatea produsului |
 | Scăzut | 4 | 3 (OBS-01 parțial, ARC-01, DOC-01) | Datorie tehnică ori îmbunătățire cu impact limitat |
+
+**Notă de rigoare**: LEG-02 și OPS-02 sunt marcate rezolvate pe baza confirmării explicite a userului, nu a unei re-verificări independente de cod/infrastructură din partea acestui audit (vezi detalii la fiecare constatare, secțiunea 4).
 
 ## 2. Metodologie și limite
 
@@ -153,19 +155,19 @@ Absența advisory-urilor nu demonstrează securitatea codului propriu și nu red
 
 **Criteriu de verificare:** un utilizator neverificat primește redirect/403 pentru toate API-urile de produs; utilizatorul verificat și guest-ul autorizat au comportamentul documentat.
 
-### AUTH-02 — `/register` nu are rate limiting (nou, 14 iulie 2026)
+### AUTH-02 — `/register` nu are rate limiting (nou, 14 iulie 2026) — ✅ Rezolvat 14 iulie 2026
 
 **Severitate:** Ridicat  
-**Stare:** Confirmată  
+**Stare:** ✅ Rezolvată — verificată prin test automat  
 **Domeniu:** abuz, autentificare
 
-**Dovadă:** `routes/auth.php:13-16` definește `POST register` fără middleware `throttle`, spre deosebire de `verification.send`/`verification.verify` care au `throttle:6,1` (liniile 30, 34). Login-ul are propriul rate limiting Breeze implicit, dar înregistrarea nu.
+**Dovadă (problema originală):** `routes/auth.php:13-16` definea `POST register` fără middleware `throttle`, spre deosebire de `verification.send`/`verification.verify` care au `throttle:6,1`. Login-ul are propriul rate limiting Breeze implicit, dar înregistrarea nu.
 
 **Impact:** creare în masă de conturi neverificate (bot/script), fiecare capabil să consume imediat cota AI (£0.10/lună) și storage-ul din planul Free, fără nicio frecare.
 
-**Remediere:** adaugă `throttle:6,1` (sau un limiter dedicat, mai strict, per IP) pe ruta `POST /register`.
+**Remediere aplicată:** `routes/auth.php` — `POST register` are acum `throttle:6,1`, identic cu limiterul folosit la verificarea emailului.
 
-**Criteriu de verificare:** peste N încercări de înregistrare de pe același IP într-un interval, request-urile suplimentare primesc `429`.
+**Verificare:** test nou `RegistrationTest::test_registration_is_rate_limited` — 6 înregistrări succed, a 7-a de pe același "client" primește `429`. Suită completă verde (85 teste, 268 assertions).
 
 ### DATA-01 — Operațiile DB–filesystem nu sunt atomice și erorile storage sunt silențioase
 
@@ -324,16 +326,18 @@ Absența advisory-urilor nu demonstrează securitatea codului propriu și nu red
 ### UX-01 — Accesibilitatea canvasului nu este demonstrată
 
 **Severitate:** Mediu  
-**Stare:** Risc de validat dinamic  
+**Stare:** Parțial rezolvată 14 iulie 2026 — vezi secțiunea 15; **validarea finală cu NVDA/VoiceOver de către un om rămâne deschisă**  
 **Domeniu:** UX, accesibilitate
 
-**Dovadă:** canvasul construiește numeroase controale, meniuri, panouri, selecții și dialoguri manual în `resources/js/canvas.js`; fișierul are ~9.739 linii. Există etichete ARIA punctuale, dar nu există teste automate de accesibilitate sau teste browser.
+**Dovadă (problema originală):** canvasul construiește numeroase controale, meniuri, panouri, selecții și dialoguri manual în `resources/js/canvas.js`. Există etichete ARIA punctuale, dar nu exista niciun panou dedicat de accesibilitate și nu exista niciun test automat de accesibilitate.
 
 **Impact:** focus trapping, ordine de tab, anunțarea erorilor, operarea fără pointer și contrastul pot eșua în fluxurile centrale.
 
-**Remediere:** audit WCAG 2.2 AA cu tastatură, NVDA/VoiceOver și axe; definește componente accesibile reutilizabile pentru dialog, menu, tabs și live regions.
+**Ce s-a construit azi:** panou de accesibilitate dedicat, reversibil prin buton propriu în toolbar (contrast mare real prin variabile CSS, text mărit pentru interfață, reducere mișcare care respectă și `prefers-reduced-motion` la nivel de SO, listă de shortcuts reale din aplicație). Testat automat: navigare completă din tastatură (Tab/Enter), `aria-expanded` corect, Escape închide panoul, preferințele persistă. Detalii complete în secțiunea 15.
 
-**Criteriu de verificare:** toate fluxurile principale sunt complet operabile din tastatură, fără încălcări axe serioase și cu focus vizibil/restaurat.
+**Ce rămâne:** validarea manuală reală cu NVDA/VoiceOver — userul a spus explicit că o face separat. Până atunci, criteriul de verificare de mai jos nu e bifat integral.
+
+**Criteriu de verificare:** toate fluxurile principale sunt complet operabile din tastatură, fără încălcări axe serioase și cu focus vizibil/restaurat — **verificat automat pentru panoul de accesibilitate; restul canvasului nerevalidat cu cititor de ecran real.**
 
 ### SEO-01 — Cache-ul sitemapului nu este invalidat la publicare
 
@@ -363,33 +367,29 @@ Absența advisory-urilor nu demonstrează securitatea codului propriu și nu red
 
 **Criteriu de verificare:** data map-ul și configurația reală corespund textelor publice și există proceduri testate pentru solicitările persoanelor vizate.
 
-### LEG-02 — Politica de confidențialitate nu acoperă datele din formularul de contact și newsletter (nou, 14 iulie 2026)
+### LEG-02 — Politica de confidențialitate nu acoperă datele din formularul de contact și newsletter (nou, 14 iulie 2026) — ✅ Rezolvat 14 iulie 2026
 
 **Severitate:** Mediu  
-**Stare:** Confirmată  
+**Stare:** ✅ Rezolvată — **confirmat de user**, netestat independent de audit  
 **Domeniu:** legal, confidențialitate
 
-**Dovadă:** `LegalController::privacy()` enumeră explicit tipurile de date colectate (cont, securitate, conținut notebook, PDF-uri, favorite) dar nu menționează cele două categorii noi introduse azi: mesajele din `/contact` (`ContactMessage`: nume, telefon, email, text liber) și adresele din formularul de newsletter (`NewsletterSubscriber`). Ambele sunt stocate permanent în baza de date și vizibile în panoul admin, fără politică de retenție declarată.
+**Dovadă (problema originală):** `LegalController::privacy()` enumera explicit tipurile de date colectate (cont, securitate, conținut notebook, PDF-uri, favorite) dar nu menționa cele două categorii noi introduse pe 14 iulie: mesajele din `/contact` (`ContactMessage`: nume, telefon, email, text liber) și adresele din formularul de newsletter (`NewsletterSubscriber`).
 
-**Impact:** informare incompletă către utilizator despre o categorie reală de date personale colectate; nealiniere între ce spune politica și ce face aplicația (aceeași clasă de problemă ca LEG-01 original).
+**Impact:** informare incompletă către utilizator despre o categorie reală de date personale colectate.
 
-**Remediere:** adaugă un paragraf în `/privacy` care menționează formularul de contact și newsletter-ul, scopul (răspuns la cereri / trimitere de update-uri de produs), temeiul (consimțământ explicit la newsletter, interes legitim la contact) și retenția.
+**Stare curentă:** userul a confirmat rezolvarea. **Notă de rigoare:** nu am re-verificat eu însumi textul din `/privacy` în acest pas — dacă politica nu a fost de fapt actualizată încă, semnalează, ca să reintroducem constatarea.
 
-**Criteriu de verificare:** textul din `/privacy` menționează explicit `ContactMessage`/`NewsletterSubscriber` ca și categorii de date, cu scop și retenție declarate.
-
-### OPS-02 — Extensia `intl` poate eșua silențios sub server web, deși CLI o raportează activă (nou, 14 iulie 2026)
+### OPS-02 — Extensia `intl` poate eșua silențios sub server web, deși CLI o raportează activă (nou, 14 iulie 2026) — ✅ Rezolvat 14 iulie 2026
 
 **Severitate:** Ridicat  
-**Stare:** Confirmată și reprodusă; fix local aplicat, **neconfirmată pe infrastructura de producție (Forge)**  
+**Stare:** ✅ Rezolvată pe mediul local; **verificare pe Forge confirmată de user**  
 **Domeniu:** operare, deployment
 
-**Dovadă:** panoul `/admin` întorcea `500` (`RuntimeException: The "intl" PHP extension is required to use the [format] method.`, `Number.php:453`) pe orice pagină Filament care formata numere, deși `php -m` din CLI raporta `intl` activ. Cauza: `php_intl.dll` are nevoie de 4 DLL-uri ICU aflate lângă `php.exe`; Apache (`httpd.exe`) rulează dintr-un director diferit și nu le găsea, eșec logat doar în `apache/logs/error.log` ca `PHP Warning: Unable to load dynamic library 'intl'` — invizibil pentru `php artisan test`, care rulează exclusiv prin CLI.
+**Dovadă (problema originală):** panoul `/admin` întorcea `500` (`RuntimeException: The "intl" PHP extension is required...`) pe orice pagină Filament care formata numere, deși `php -m` din CLI raporta `intl` activ. Cauza: `php_intl.dll` are nevoie de 4 DLL-uri ICU aflate lângă `php.exe`; Apache (`httpd.exe`) rulează dintr-un director diferit și nu le găsea — eșec invizibil pentru `php artisan test`, care rulează exclusiv prin CLI.
 
-**Impact:** o extensie confirmată "activă" prin verificare CLI poate fi complet nefuncțională sub SAPI-ul real folosit de web server, fără ca suita de teste s-o detecteze vreodată. Orice verificare de tip "am rulat `php -m`, e ok" e insuficientă.
+**Impact:** o extensie confirmată "activă" prin verificare CLI poate fi complet nefuncțională sub SAPI-ul real folosit de web server.
 
-**Remediere:** pe Forge (php-fpm), rulează explicit `php -m | grep intl` folosind binarul PHP configurat pentru site (nu binarul implicit din `PATH` dacă diferă), și testează efectiv o pagină din `/admin` în browser după orice deploy sau schimbare de versiune PHP. Nu presupune că un rezultat CLI reflectă comportamentul FPM/mod_php.
-
-**Criteriu de verificare:** `/admin` și orice pagină care folosește `Number::format()`/`intl` se încarcă cu `200` în producție, verificat printr-o cerere HTTP reală, nu doar prin `artisan`.
+**Stare curentă:** fix local aplicat (DLL-uri ICU copiate lângă `httpd.exe`, Apache repornit) și verificat vizual atunci. Userul a confirmat separat că `intl` funcționează și pe infrastructura de producție (Forge). **Recomandare păstrată pentru viitor:** după orice schimbare de versiune PHP pe Forge, re-verifică explicit `php -m | grep intl` cu binarul folosit efectiv de php-fpm, nu doar presupune.
 
 ### OBS-01 — Lipsesc observabilitatea și obiectivele operaționale explicite
 
@@ -506,13 +506,18 @@ Aceste elemente nu sunt prezentate automat ca vulnerabilități:
 3. Adaugă bugete de performanță și monitorizare Web Vitals. *(neînceput)*
 4. Clarifică fluxul demo → cont și funcțiile placeholder pe baza metricilor de produs. *(parțial — placeholder-ul "Infographics" încă există în bibliotecă, dar homepage-ul nu mai promite funcția, vezi secțiunea 15)*
 
-### P4 — cerute explicit de user, încă deschise (14 iulie 2026)
+### P4 — cerute explicit de user (actualizat 14 iulie 2026, seara)
 
-1. **Zoom pe canvas** — neimplementat.
-2. **Criptare completă a conținutului utilizatorilor** ("nimeni să nu poată vedea ce e acolo") — neimplementat; fișierele din discul `tenants` sunt stocate în clar.
-3. **Backup configurat** — tot neimplementat (nici `spatie/laravel-backup`, nici `SoftDeletes` pe modelele cu conținut).
-4. **Rate limiting la `/register`** (AUTH-02) — tot neimplementat.
-5. **Validare manuală de accesibilitate** (NVDA/VoiceOver, axe) — niciodată efectuată de un om, doar verificări statice.
+**Rezolvate azi:**
+1. ✅ **Rate limiting la `/register`** (AUTH-02) — `throttle:6,1` adăugat, test automat verde.
+2. ✅ **Buton dedicat de accesibilitate în canvas** — vezi secțiunea 15, nou adăugată. Validarea finală cu NVDA/VoiceOver rămâne să fie făcută manual de user, dar infrastructura (contrast real, text mărit, reducere mișcare, listă de shortcuts, focus vizibil, navigare completă din tastatură) e pregătită și testată automat (Playwright).
+
+**Planificate pentru viitor — neurgente, asumate explicit de user:**
+3. **Zoom pe canvas** — neimplementat. Fără impact de securitate/date; pur funcțional.
+4. **Criptare completă a conținutului utilizatorilor** ("nimeni să nu poată vedea ce e acolo") — neimplementat; fișierele din discul `tenants` sunt stocate în clar. Efort estimat: 1-3 săptămâni, risc real (vezi discuția separată din sesiune — cheia de criptare pierdută = date irecuperabile). Recomandare păstrată: **backup înainte de criptare**, nu invers.
+5. **Backup configurat** — tot neimplementat (nici `spatie/laravel-backup`, nici `SoftDeletes` pe modelele cu conținut). Efort estimat: o jumătate de zi, risc zero (operațiune pur adăugată). Recomandare: prioritizează asta înaintea criptării, exact pentru că protejează împotriva eșecurilor viitoare, inclusiv ale criptării înseși.
+
+Niciuna dintre cele două de mai sus nu blochează lansarea din perspectiva acestui audit — sunt asumate explicit de user ca fiind de făcut ulterior, nu ca riscuri ignorate.
 
 ### Quick wins
 
@@ -780,3 +785,40 @@ Verificare sistematică a copy-ului de marketing față de ce face aplicația ef
 ### Verificare și livrare
 
 Suită completă: **84 teste, 267 assertions**, verde. `npm run build` curat. Toate schimbările din această secțiune au fost commit-uite și împinse pe `origin/main` (commit `836c0c0`, 49 fișiere) — primul push real al acestui proiect din perspectiva acestui audit; repository-ul are acum istoric Git verificabil.
+
+## 15. Rate limiting la înregistrare și panou dedicat de accesibilitate (14 iulie 2026, seara)
+
+**Context:** din cele 7 constatări deschise raportate userului mai devreme, userul a decis: criptarea și backup-ul rămân planificate pentru viitor (neurgente, asumate explicit); politica de confidențialitate (LEG-02) și verificarea `intl` pe Forge (OPS-02) sunt confirmate rezolvate de user; rate limiting-ul la înregistrare (AUTH-02) și accesibilitatea (UX-01) trebuiau rezolvate imediat.
+
+### AUTH-02 — rate limiting la `/register`
+
+- `routes/auth.php`: `POST register` are acum `throttle:6,1`, identic cu limiterul deja folosit la `verification.send`/`verification.verify`.
+- Test nou `RegistrationTest::test_registration_is_rate_limited` — confirmă `429` după 6 înregistrări de pe același „client" de test.
+
+### UX-01 — panou dedicat de accesibilitate în canvas
+
+**Cerință**: buton separat și specific pentru accesibilitate, pregătit după best practice W3C/WCAG și Google (Lighthouse), userul urmând să valideze separat cu un cititor de ecran real.
+
+**Ce s-a construit** (`resources/views/canvas/show.blade.php`, `resources/js/canvas.js`, `resources/css/canvas.css`):
+- Buton nou în toolbar, `#accessibilityBtn` (pictogramă universală de accesibilitate), lângă butonul de Settings — etichetă `aria-label="Accessibility options"`, `aria-expanded`/`aria-controls` corecte, integrat în infrastructura existentă de meniuri toolbar (aceeași funcție `toggleToolbarMenu` folosită de toate celelalte meniuri — moștenește gratuit: închidere la click în afară, închidere la `Escape`, poziționare automată, focus vizibil).
+- Panou cu 3 comutatoare **reale**, nu decorative:
+  - **High contrast** — schimbă variabilele CSS de bază (`--text`, `--border`, `--panel` etc.) în valori cu contrast maxim (negru pe alb), plus un inel de focus galben de 3px foarte vizibil pe orice element focusat.
+  - **Larger text** — mărește fontul și dimensiunea butoanelor din meniuri/toolbar/chat (nu afectează conținutul desenat de utilizator pe canvas, care are propriul control de mărime text, deja existent).
+  - **Reduce motion** — dezactivă animațiile/tranzițiile; respectă și `prefers-reduced-motion` la nivel de sistem de operare printr-un `@media` separat, activ indiferent dacă utilizatorul a deschis vreodată panoul (bifează un criteriu explicit verificat de Lighthouse/Google).
+- Listă de scurtături de tastatură **reale**, extrase din codul existent (nu inventate): `Ctrl/⌘+S` (salvare), `Ctrl/⌘+Z` (undo), `Ctrl/⌘+Shift+Z` (redo), `Ctrl/⌘+O` (bibliotecă), plus `Tab`/`Esc`.
+- Preferințele se salvează în `localStorage` (`fixbly.a11y`) și se aplică automat la reîncărcarea paginii.
+- **De ce nu are focus trap propriu-zis**: panoul e un meniu de tip „disclosure" (dropdown ancorat de un buton), la fel ca toate celelalte 8 meniuri din toolbar — conform ARIA Authoring Practices, acest tip de widget nu necesită capturarea focusului (asta e cerută doar pentru dialoguri modale adevărate); Tab poate continua natural spre restul interfeței, iar meniul se închide la `Escape` sau click în afară. Comportament identic, intenționat, cu meniurile Settings/AI deja existente.
+
+**Verificare** (Playwright, browser real, nu doar citire de cod):
+- Deschidere cu mouse și cu tastatură (`Tab` până la buton + `Enter`) — ambele funcționează, `aria-expanded` se actualizează corect.
+- Toate cele 3 comutatoare aplică efectiv clasele CSS (`a11y-high-contrast a11y-large-text a11y-reduce-motion` pe `<html>`) — confirmat prin citirea `document.documentElement.className`.
+- Preferințele supraviețuiesc unui `reload` complet al paginii.
+- `Escape` închide panoul.
+- Zero erori în consola browserului.
+- Captură de ecran confirmă vizual: contrast alb-negru real, buton activ evidențiat, panou lizibil.
+
+**Ce rămâne, explicit deschis:** validarea finală cu NVDA/VoiceOver — userul a confirmat că o face separat. Restul canvasului (dincolo de acest panou nou) nu a fost re-auditat cu cititor de ecran real; UX-01 rămâne parțial deschisă până la acea validare.
+
+### Verificare finală
+
+Suită completă: **85 teste, 268 assertions**, verde (+1 față de secțiunea 14 — testul de throttling). `npm run build` curat.

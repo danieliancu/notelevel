@@ -16,6 +16,115 @@
     --canvas-right: 0px;
 }
 
+/* ============ Accessibility modes ============ */
+/* Toggled via the Accessibility menu (toolbar); state persisted in localStorage. */
+
+html.a11y-high-contrast {
+    --text: #000000;
+    --muted: #1a1a1a;
+    --border: #000000;
+    --panel: #ffffff;
+    --panel-strong: #ffffff;
+    --accent: #005f56;
+    --danger: #b30000;
+}
+
+html.a11y-high-contrast .icon-button,
+html.a11y-high-contrast .toolbar-menu,
+html.a11y-high-contrast .switch-control span {
+    border-color: #000000;
+}
+
+html.a11y-high-contrast *:focus-visible {
+    outline: 3px solid #ffbf00 !important;
+    outline-offset: 2px !important;
+}
+
+html.a11y-large-text .toolbar-menu,
+html.a11y-large-text .page-control,
+html.a11y-large-text .chat-bar,
+html.a11y-large-text .a11y-shortcuts-list {
+    font-size: 17px;
+}
+
+html.a11y-large-text .icon-button svg {
+    width: 42px;
+    height: 42px;
+}
+
+html.a11y-large-text .icon-button {
+    min-width: 48px;
+    min-height: 48px;
+}
+
+html.a11y-reduce-motion *,
+html.a11y-reduce-motion *::before,
+html.a11y-reduce-motion *::after {
+    animation-duration: 0.001ms !important;
+    animation-iteration-count: 1 !important;
+    transition-duration: 0.001ms !important;
+    scroll-behavior: auto !important;
+}
+
+@media (prefers-reduced-motion: reduce) {
+    *,
+    *::before,
+    *::after {
+        animation-duration: 0.001ms !important;
+        animation-iteration-count: 1 !important;
+        transition-duration: 0.001ms !important;
+        scroll-behavior: auto !important;
+    }
+}
+
+.a11y-shortcuts-section {
+    padding: 10px 14px 14px;
+    border-top: 1px solid var(--border);
+}
+
+.a11y-shortcuts-title {
+    font-size: 12px;
+    font-weight: 700;
+    text-transform: uppercase;
+    letter-spacing: 0.04em;
+    color: var(--muted);
+    margin: 0 0 8px;
+}
+
+.a11y-shortcuts-list {
+    display: grid;
+    gap: 6px;
+    margin: 0;
+}
+
+.a11y-shortcuts-list > div {
+    display: flex;
+    align-items: center;
+    justify-content: space-between;
+    gap: 10px;
+}
+
+.a11y-shortcuts-list dt {
+    display: flex;
+    align-items: center;
+    gap: 3px;
+}
+
+.a11y-shortcuts-list dd {
+    margin: 0;
+    color: var(--muted);
+    font-size: 13px;
+}
+
+.a11y-shortcuts-list kbd {
+    font-family: inherit;
+    font-size: 11px;
+    padding: 2px 6px;
+    border-radius: 4px;
+    border: 1px solid var(--border);
+    background: var(--panel-strong);
+}
+
 * {
     box-sizing: border-box;
     -webkit-tap-highlight-color: transparent;

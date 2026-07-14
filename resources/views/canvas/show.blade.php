@@ -197,6 +197,15 @@
                 <circle cx="42" cy="46" r="7"/>
             </svg>
         </button>
+        <button class="icon-button accessibility-icon toolbar-trigger" id="accessibilityBtn" type="button" title="Accessibility" aria-label="Accessibility options" aria-expanded="false" aria-controls="accessibilityMenu">
+            <svg viewBox="0 0 64 64" aria-hidden="true">
+                <circle cx="32" cy="14" r="6"/>
+                <path d="M14 26h36"/>
+                <path d="M32 20v20"/>
+                <path d="M32 40 20 56"/>
+                <path d="M32 40 44 56"/>
+            </svg>
+        </button>
         <span class="toolbar-spacer" aria-hidden="true"></span>
         <button class="icon-button pending-more-icon" id="pendingMoreBtn" type="button" title="More actions" aria-label="More actions" aria-expanded="false" aria-controls="pendingActionsMenu">
             <svg viewBox="0 0 64 64" aria-hidden="true">
@@ -491,6 +500,62 @@
                     </svg>
                 </button>
             </div>
+        </div>
+    </div>
+
+    <div class="toolbar-menu accessibility-menu" id="accessibilityMenu" aria-hidden="true" role="region" aria-label="Accessibility options">
+        <div class="ai-menu-row">
+            <span class="ai-menu-label">
+                <span class="ai-menu-icon">
+                    <svg viewBox="0 0 24 24" aria-hidden="true"><circle cx="12" cy="12" r="10" fill="none" stroke="currentColor" stroke-width="2"/><path d="M8 12h8" stroke="currentColor" stroke-width="2" stroke-linecap="round"/></svg>
+                </span>
+                <span>High contrast</span>
+            </span>
+            <span class="ai-perfect-shape-control">
+                <label class="switch-control" aria-label="High contrast">
+                    <input id="a11yHighContrastToggle" type="checkbox">
+                    <span></span>
+                </label>
+            </span>
+        </div>
+        <div class="ai-menu-row">
+            <span class="ai-menu-label">
+                <span class="ai-menu-icon">
+                    <svg viewBox="0 0 24 24" aria-hidden="true"><path d="M4 12h16M4 6h16M4 18h10" stroke="currentColor" stroke-width="2" stroke-linecap="round" fill="none"/></svg>
+                </span>
+                <span>Larger text</span>
+            </span>
+            <span class="ai-perfect-shape-control">
+                <label class="switch-control" aria-label="Larger text">
+                    <input id="a11yLargeTextToggle" type="checkbox">
+                    <span></span>
+                </label>
+            </span>
+        </div>
+        <div class="ai-menu-row">
+            <span class="ai-menu-label">
+                <span class="ai-menu-icon">
+                    <svg viewBox="0 0 24 24" aria-hidden="true"><path d="M12 2v4M12 18v4M4.9 4.9l2.8 2.8M16.3 16.3l2.8 2.8M2 12h4M18 12h4M4.9 19.1l2.8-2.8M16.3 7.7l2.8-2.8" stroke="currentColor" stroke-width="2" stroke-linecap="round" fill="none"/></svg>
+                </span>
+                <span>Reduce motion</span>
+            </span>
+            <span class="ai-perfect-shape-control">
+                <label class="switch-control" aria-label="Reduce motion">
+                    <input id="a11yReduceMotionToggle" type="checkbox">
+                    <span></span>
+                </label>
+            </span>
+        </div>
+        <div class="menu-section a11y-shortcuts-section">
+            <h2 class="a11y-shortcuts-title">Keyboard shortcuts</h2>
+            <dl class="a11y-shortcuts-list">
+                <div><dt><kbd>Ctrl</kbd>/<kbd>⌘</kbd> + <kbd>S</kbd></dt><dd>Save</dd></div>
+                <div><dt><kbd>Ctrl</kbd>/<kbd>⌘</kbd> + <kbd>Z</kbd></dt><dd>Undo</dd></div>
+                <div><dt><kbd>Ctrl</kbd>/<kbd>⌘</kbd> + <kbd>Shift</kbd> + <kbd>Z</kbd></dt><dd>Redo</dd></div>
+                <div><dt><kbd>Ctrl</kbd>/<kbd>⌘</kbd> + <kbd>O</kbd></dt><dd>Open library</dd></div>
+                <div><dt><kbd>Tab</kbd></dt><dd>Move between controls</dd></div>
+                <div><dt><kbd>Esc</kbd></dt><dd>Close any open menu</dd></div>
+            </dl>
         </div>
     </div>
 
