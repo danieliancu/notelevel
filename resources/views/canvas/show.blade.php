@@ -6,6 +6,8 @@
     <meta name="color-scheme" content="light">
     <title>Notelevel - untitled</title>
     <meta name="csrf-token" content="{{ csrf_token() }}">
+    <link rel="icon" type="image/svg+xml" href="{{ asset('marketing/favicon.svg') }}" />
+    <link rel="apple-touch-icon" href="{{ asset('marketing/favicon.svg') }}" />
     @vite(['resources/css/canvas.css'])
     <script>
         window.CANVAS_DEMO_MODE = {{ ($isDemo ?? false) ? 'true' : 'false' }};
