@@ -206,6 +206,8 @@
         let pages = new Map();
         let pageImageSizes = new Map();
         let pageModels = new Map();
+        let failedPageLoads = new Set();
+        let warnedMissingPages = new Set();
         let redoStacks = new Map();
         let forwardRedoStacks = new Map();
         let dirtyPages = new Set();
@@ -3808,7 +3810,17 @@
             }
 
             if (pages.has(currentPage)) {
-                await drawPageImage(pages.get(currentPage));
+                const pageToWarnAbout = currentPage;
+                try {
+                    await drawPageImage(pages.get(currentPage));
+                } catch (error) {
+                    console.error(error);
+                    clearCanvas();
+                    if (!warnedMissingPages.has(pageToWarnAbout)) {
+                        warnedMissingPages.add(pageToWarnAbout);
+                        showCanvasToast(`Page ${pageToWarnAbout} could not be displayed.`);
+                    }
+                }
                 if (!isTextEditing()) {
                     renderTextLayer();
                 }
@@ -3816,6 +3828,10 @@
             }
 
             clearCanvas();
+            if (failedPageLoads.has(currentPage) && !warnedMissingPages.has(currentPage)) {
+                warnedMissingPages.add(currentPage);
+                showCanvasToast(`Page ${currentPage} could not be loaded and may be missing from storage.`);
+            }
             if (!isTextEditing()) {
                 renderTextLayer();
             }
@@ -9881,13 +9897,24 @@ return { ok: false, message: (err && err.message) || 'Network error while readin
                 const loadedPages = new Map();
                 const loadedPageImageSizes = new Map();
                 const loadedModels = new Map();
+                const loadedFailedPages = new Set();
                 const pageNumbers = Array.isArray(file.pages) ? file.pages : [];
                 for (const pageNumber of pageNumbers) {
                     const url = file.pageUrls && file.pageUrls[String(pageNumber)];
                     if (url) {
-                        const imageData = await imageToDataUrl(url);
-                        loadedPages.set(Number(pageNumber), imageData.dataUrl);
-                        loadedPageImageSizes.set(Number(pageNumber), { width: imageData.width, height: imageData.height });
+                        try {
+                            const imageData = await imageToDataUrl(url);
+                            loadedPages.set(Number(pageNumber), imageData.dataUrl);
+                            loadedPageImageSizes.set(Number(pageNumber), { width: imageData.width, height: imageData.height });
+                        } catch (error) {
+                            // One missing/corrupt page image used to abort the whole
+                            // document open (via the outer catch) — now the rest of
+                            // the document still opens, and this page is flagged so
+                            // renderCurrentPage() can show it as unavailable instead
+                            // of silently rendering a blank canvas.
+                            console.error(error);
+                            loadedFailedPages.add(Number(pageNumber));
+                        }
                     }
                 }
 
@@ -9908,6 +9935,8 @@ return { ok: false, message: (err && err.message) || 'Network error while readin
                 pages = loadedPages;
                 pageImageSizes = loadedPageImageSizes;
                 pageModels = loadedModels;
+                failedPageLoads = loadedFailedPages;
+                warnedMissingPages = new Set();
                 redoStacks = new Map();
                 forwardRedoStacks = new Map();
                 dirtyPages = new Set();
@@ -9924,6 +9953,14 @@ return { ok: false, message: (err && err.message) || 'Network error while readin
                 hasUnsavedChanges = false;
                 closeModals();
                 saveSessionNow({ includePages: true });
+
+                const pagesWithoutFallback = [...loadedFailedPages].filter((pageNumber) => !loadedModels.has(pageNumber));
+                if (pagesWithoutFallback.length > 0) {
+                    pagesWithoutFallback.sort((a, b) => a - b);
+                    showCanvasToast(pagesWithoutFallback.length === 1
+                        ? `Page ${pagesWithoutFallback[0]} could not be loaded and may be missing from storage.`
+                        : `${pagesWithoutFallback.length} pages could not be loaded and may be missing from storage.`);
+                }
             } catch (error) {
                 console.error(error);
                 showCanvasToast('Could not open this document. Please try again.');
