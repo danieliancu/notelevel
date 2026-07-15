@@ -9868,7 +9868,7 @@ return { ok: false, message: (err && err.message) || 'Network error while readin
 
             const response = await fetch(`${url}?t=${Date.now()}`, { cache: 'no-store' });
             if (!response.ok) {
-                return null;
+                throw new Error(`Failed to load document data: ${response.status}`);
             }
 
             const data = await response.json();
@@ -9924,6 +9924,9 @@ return { ok: false, message: (err && err.message) || 'Network error while readin
                 hasUnsavedChanges = false;
                 closeModals();
                 saveSessionNow({ includePages: true });
+            } catch (error) {
+                console.error(error);
+                showCanvasToast('Could not open this document. Please try again.');
             } finally {
                 hideDocumentLoadingSpinner();
             }
