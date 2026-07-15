@@ -82,6 +82,17 @@ class DocumentController extends Controller
             return $this->overwriteExistingOrConflict($request, $existing);
         }
 
+        // Document::create() only populates the attributes passed to it — the
+        // in-memory model doesn't pick up the DB's default `version` (1) on
+        // its own. Without this refresh, the response serialized `version` as
+        // null, the client echoed that straight back on the very next
+        // autosave call, and its `required|integer|min:1` validation failed —
+        // which (since these fetch() calls don't send an Accept: application/
+        // json header) Laravel answered with a 302 redirect instead of a JSON
+        // error, and the client showed that as "Save failed" even though the
+        // document had just been created successfully.
+        $document->refresh();
+
         $this->pdfPageImports->reconcile($document, $request->input('content'));
 
         return response()->json($document, 201);

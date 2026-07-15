@@ -1006,7 +1006,7 @@
             try {
                 const response = await fetch(`/documents/${currentDocumentId}/pages`, {
                     method: 'POST',
-                    headers: { 'Content-Type': 'application/json', 'X-CSRF-TOKEN': __csrfToken },
+                    headers: { 'Content-Type': 'application/json', 'Accept': 'application/json', 'X-CSRF-TOKEN': __csrfToken },
                     body: JSON.stringify({ pages: payloadPages })
                 });
                 const data = await response.json().catch(() => ({}));
@@ -1033,7 +1033,7 @@
             try {
                 const response = await fetch(`/documents/${currentDocumentId}/autosave`, {
                     method: 'POST',
-                    headers: { 'Content-Type': 'application/json', 'X-CSRF-TOKEN': __csrfToken },
+                    headers: { 'Content-Type': 'application/json', 'Accept': 'application/json', 'X-CSRF-TOKEN': __csrfToken },
                     body: JSON.stringify({
                         request_id: requestId,
                         version: currentVersion,
@@ -2749,7 +2749,7 @@
         async function postToAi(payload) {
             const response = await fetch('/canvas/ai', {
                 method: 'POST',
-                headers: { 'Content-Type': 'application/json', 'X-CSRF-TOKEN': __csrfToken },
+                headers: { 'Content-Type': 'application/json', 'Accept': 'application/json', 'X-CSRF-TOKEN': __csrfToken },
                 body: JSON.stringify(payload)
             });
             const data = await response.json().catch(() => ({}));
@@ -8361,7 +8361,7 @@
             const title = displayName(targetFilename);
             const response = await fetch('/documents', {
                 method: 'POST',
-                headers: { 'Content-Type': 'application/json', 'X-CSRF-TOKEN': __csrfToken },
+                headers: { 'Content-Type': 'application/json', 'Accept': 'application/json', 'X-CSRF-TOKEN': __csrfToken },
                 body: JSON.stringify({
                     title,
                     folder: folderName || undefined,
@@ -8422,7 +8422,7 @@
                 const requestId = generateRequestId();
                 const response = await fetch(`/documents/${documentId}/autosave`, {
                     method: 'POST',
-                    headers: { 'Content-Type': 'application/json', 'X-CSRF-TOKEN': __csrfToken },
+                    headers: { 'Content-Type': 'application/json', 'Accept': 'application/json', 'X-CSRF-TOKEN': __csrfToken },
                     body: JSON.stringify({
                         request_id: requestId,
                         version,
