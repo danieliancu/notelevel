@@ -44,6 +44,14 @@ class SecurityHeaders
                 : (is_file(public_path('hot')) ? trim((string) file_get_contents(public_path('hot'))) : '');
             $viteOrigin = rtrim($viteOrigin, '/');
 
+            // Chrome rejects the bracketed IPv6 literal `[::1]` as an invalid
+            // CSP source expression outright (silently dropping it from the
+            // policy, per its own console warning), even though it's a valid
+            // URL — Vite's dev server binds there by default on many Windows
+            // setups. `localhost` resolves to the same loopback interface and
+            // is unambiguously valid in CSP, so swap it in for policy purposes.
+            $viteOrigin = str_replace('[::1]', 'localhost', $viteOrigin);
+
             if (filter_var($viteOrigin, FILTER_VALIDATE_URL)) {
                 $scriptSources[] = $viteOrigin;
                 $styleSources[] = $viteOrigin;
