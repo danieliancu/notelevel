@@ -5571,39 +5571,24 @@
             tableCols = Math.max(1, Math.min(60, Number(tableColsInput.value) || 1));
             tableRowsInput.value = tableRows;
             tableColsInput.value = tableCols;
-            activeTool = 'table';
-            tableSelectionMode = true;
-            textSelectionMode = false;
-            drawingSelectionMode = false;
-            clearDrawingSelection();
-            insertBtn.classList.add('is-active');
-            penBtn.classList.remove('is-active');
-            eraserBtn.classList.remove('is-active');
-            selectBtn.classList.remove('is-active');
-            syncInsertFrameToolStates();
-            syncPerfectShapeControls();
-            canvas.style.cursor = 'crosshair';
+            setTool('select');
             hideBrushCursor();
             closeToolbarMenus();
             closeModals();
+            // Places the table immediately, centered on the visible page
+            // area, instead of arming a click-drag placement mode.
+            drawTable(centeredViewportBounds(Math.min(tableCols * 110, 900), Math.min(tableRows * 44, 900)));
         }
 
         function startTextSelection() {
-            activeTool = 'text';
-            textSelectionMode = true;
-            tableSelectionMode = false;
-            drawingSelectionMode = false;
-            clearDrawingSelection();
-            insertBtn.classList.add('is-active');
-            penBtn.classList.remove('is-active');
-            eraserBtn.classList.remove('is-active');
-            selectBtn.classList.remove('is-active');
-            syncInsertFrameToolStates();
-            syncPerfectShapeControls();
-            canvas.style.cursor = 'text';
+            setTool('select');
             hideBrushCursor();
             closeToolbarMenus();
             closeModals();
+            // Places the text box immediately, centered on the visible page
+            // area and focused for typing, instead of arming a click-drag
+            // placement mode.
+            createTextBox(centeredViewportBounds(320, 100));
         }
 
         function startDrawingSelectionMode() {
@@ -6252,6 +6237,27 @@
                 y: Math.max(0, Math.min(Number(bounds.y) || 0, model.baseHeight - height)),
                 width,
                 height
+            };
+        }
+
+        // Bounds (in page coordinates) for a box of the given size, centered
+        // on whatever portion of the page is currently visible on screen —
+        // used so clicking the Text/Table toolbar buttons places a new frame
+        // right where the user is already looking, instead of requiring a
+        // manual click-drag on the canvas to position it.
+        function centeredViewportBounds(width, height) {
+            const model = currentPageModel();
+            const rect = pageDisplayRect(model);
+            const size = cssSize();
+            const clampedWidth = Math.max(1, Math.min(width, model.baseWidth));
+            const clampedHeight = Math.max(1, Math.min(height, model.baseHeight));
+            const centerX = (size.width / 2 - rect.x) / rect.scale;
+            const centerY = (size.height / 2 - rect.y) / rect.scale;
+            return {
+                x: Math.max(0, Math.min(model.baseWidth - clampedWidth, centerX - clampedWidth / 2)),
+                y: Math.max(0, Math.min(model.baseHeight - clampedHeight, centerY - clampedHeight / 2)),
+                width: clampedWidth,
+                height: clampedHeight
             };
         }
 
