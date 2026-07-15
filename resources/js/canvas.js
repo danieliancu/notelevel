@@ -1179,20 +1179,28 @@
             return false;
         }
 
+        // Refreshes the in-memory raster cache (`pages`) for the current page
+        // from its live vector model/canvas — used before exports, page
+        // navigation, and saving. Deliberately does NOT touch `dirtyPages`:
+        // that Set tracks which pages still need their image uploaded to the
+        // server, and only uploadDirtyPagesToServer() may clear an entry,
+        // and only once that upload actually succeeds. This function used to
+        // clear dirtyPages itself as a side effect of re-rendering, which
+        // meant a page's fresh image was computed locally but then silently
+        // never uploaded — the exact page most in need of syncing looked
+        // like it had nothing new to send.
         function rememberCurrentPage() {
             if (pageModels.has(currentPage)) {
                 const model = pageModels.get(currentPage);
                 if (!pageHasContent(currentPage)) {
                     pages.delete(currentPage);
                     pageModels.delete(currentPage);
-                    dirtyPages.delete(currentPage);
                     renderTextLayer();
                     return;
                 }
 
                 drawTextElementsToCanvas(model);
                 pages.set(currentPage, canvas.toDataURL('image/jpeg', 0.92));
-                dirtyPages.delete(currentPage);
                 renderCurrentPage().catch((error) => console.error(error));
                 return;
             }
@@ -1205,12 +1213,10 @@
                 const size = cssSize();
                 pages.set(currentPage, canvas.toDataURL('image/jpeg', 0.92));
                 pageImageSizes.set(currentPage, { width: size.width, height: size.height });
-                dirtyPages.delete(currentPage);
                 return;
             }
             pages.delete(currentPage);
             pageImageSizes.delete(currentPage);
-            dirtyPages.delete(currentPage);
         }
 
         function fitRect(sourceWidth, sourceHeight, targetWidth, targetHeight) {
@@ -8387,6 +8393,12 @@
             const filename = options.filename || '';
             const status = document.getElementById('saveStatus');
             const overwriteStatus = document.getElementById('overwriteStatus');
+            // Explicitly include currentPage: rememberCurrentPage() (below)
+            // refreshes its raster snapshot in `pages` regardless of whether
+            // it was flagged dirty, so make sure that fresh image actually
+            // gets uploaded too, not just whatever else is in dirtyPages.
+            const pagesNeedingUpload = new Set(dirtyPages);
+            pagesNeedingUpload.add(currentPage);
             rememberCurrentPage();
             const contentPayload = buildDocumentContentPayload();
             const paperMetadata = currentPaperMetadata();
@@ -8454,7 +8466,7 @@
                 status.textContent = `Saved: ${displayName(targetFilename)}`;
                 overwriteStatus.textContent = `Saved: ${displayName(targetFilename)}`;
                 hasUnsavedChanges = false;
-                const pagesToUpload = [...dirtyPages];
+                const pagesToUpload = [...pagesNeedingUpload].filter((page) => pages.has(page));
                 dirtyPages.clear();
                 saveSessionNow({ includePages: true });
                 if (pagesToUpload.length > 0) {
