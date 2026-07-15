@@ -8,6 +8,8 @@ use Filament\Actions\DeleteBulkAction;
 use Filament\Tables\Columns\TextColumn;
 use Filament\Tables\Table;
 use Illuminate\Database\Eloquent\Builder;
+use Illuminate\Support\Facades\Cache;
+use Stevebauman\Location\Facades\Location;
 
 class UsersTable
 {
@@ -27,6 +29,11 @@ class UsersTable
                             ->where('email', 'like', "%{$search}%")
                             ->orWhere('ip_address', 'like', "%{$search}%");
                     }),
+                TextColumn::make('location')
+                    ->label('Location')
+                    ->getStateUsing(fn (User $record): string => $record->isGuest() && $record->ip_address
+                        ? self::resolveLocation($record->ip_address)
+                        : '—'),
                 TextColumn::make('role')
                     ->badge()
                     ->searchable(),
@@ -69,5 +76,35 @@ class UsersTable
                     DeleteBulkAction::make(),
                 ]),
             ]);
+    }
+
+    /**
+     * Looks up an IP's approximate location via the same stevebauman/location
+     * package CurrencyResolver already uses for checkout currency detection.
+     * Cached per IP for a week — this renders on every admin table page load,
+     * and the underlying driver is a remote geolocation API call, not a free
+     * local lookup, so caching keeps the page fast and avoids rate limits.
+     */
+    private static function resolveLocation(string $ip): string
+    {
+        if (in_array($ip, ['127.0.0.1', '::1'], true)) {
+            return 'Local';
+        }
+
+        return Cache::remember("admin_users.geoip.{$ip}", now()->addWeek(), function () use ($ip) {
+            try {
+                $position = Location::get($ip);
+            } catch (\Throwable) {
+                return '—';
+            }
+
+            if (! $position || ! $position->countryName) {
+                return '—';
+            }
+
+            return $position->cityName
+                ? "{$position->cityName}, {$position->countryName}"
+                : $position->countryName;
+        });
     }
 }
