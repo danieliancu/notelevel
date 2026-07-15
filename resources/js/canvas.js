@@ -117,6 +117,8 @@
         let currentDocumentId = null;
         let currentVersion = null;
         let inputMode = localStorage.getItem('fixbly.inputMode') || 'auto';
+        let activePenPointerId = null;
+        let lastPenActivityAt = 0;
         let activeTool = 'pen';
         let lastDrawingTool = 'pen';
         let barrelEraserActive = false;
@@ -4499,6 +4501,13 @@
             return event.pointerType === 'pen' && Boolean(event.buttons & 2 || event.buttons & 32);
         }
 
+        function isPalmRejectionCandidate(event) {
+            if (event.pointerType !== 'touch') {
+                return false;
+            }
+            return activePenPointerId !== null || (Date.now() - lastPenActivityAt) < 500;
+        }
+
         function normalizedPressure(event) {
             if (effectiveInputMode(event) !== 'stylus') {
                 return 1;
@@ -7644,6 +7653,13 @@
                 hideBrushCursor();
                 return;
             }
+            if (event.pointerType === 'pen') {
+                activePenPointerId = event.pointerId;
+                lastPenActivityAt = Date.now();
+            }
+            if (isPalmRejectionCandidate(event) || (drawing && event.pointerType === 'touch')) {
+                return;
+            }
             updateBrushCursor(event);
             canvas.setPointerCapture(event.pointerId);
             if (drawingSelectionMode) {
@@ -7686,6 +7702,9 @@
         });
 
         canvas.addEventListener('pointermove', (event) => {
+            if (event.pointerType === 'pen') {
+                lastPenActivityAt = Date.now();
+            }
             if (isLandscapeBlocked) {
                 hideBrushCursor();
                 return;
@@ -8135,6 +8154,10 @@
         }
 
         function stopDrawing(event) {
+            if (event && event.pointerType === 'pen' && event.pointerId === activePenPointerId) {
+                activePenPointerId = null;
+                lastPenActivityAt = Date.now();
+            }
             if (isLandscapeBlocked) {
                 drawing = false;
                 tableSelecting = false;
