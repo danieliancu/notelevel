@@ -85,8 +85,17 @@ class BillingController extends Controller
 
         try {
             $result = $fulfillment->fulfill($session);
-        } catch (\RuntimeException) {
-            return redirect()->route('dashboard')->with('status', 'Payment received, but we could not identify your account. Contact support if your plan does not update.');
+        } catch (\RuntimeException $exception) {
+            // The account-identification failure and the "Premium plan not
+            // configured" failure both throw RuntimeException from fulfill(),
+            // but they're different problems for the user — don't tell
+            // someone we correctly identified "we couldn't find your
+            // account" when the real issue is a server-side misconfiguration.
+            $message = str_contains($exception->getMessage(), 'Premium plan')
+                ? 'Payment received, but activating your plan failed. Contact support and we will fix this.'
+                : 'Payment received, but we could not identify your account. Contact support if your plan does not update.';
+
+            return redirect()->route('dashboard')->with('status', $message);
         }
 
         if (! $result['isNewAccount']) {

@@ -50,7 +50,13 @@ class StripeCheckoutFulfillment
         if (! $premiumPlan) {
             Log::warning('stripe.webhook_premium_plan_missing', ['user_id' => $user->id]);
 
-            return ['user' => $user, 'isNewAccount' => $isNewAccount];
+            // This used to return silently here, as if fulfillment had
+            // succeeded — both callers (the webhook and success()) treat any
+            // non-throwing return as "plan activated", so a misconfigured
+            // `plans` table meant a customer could be charged and told
+            // they're Premium while plan_id was never touched. Throwing
+            // makes both callers surface this as the failure it is instead.
+            throw new \RuntimeException('The Premium plan is not configured.');
         }
 
         $user->update([

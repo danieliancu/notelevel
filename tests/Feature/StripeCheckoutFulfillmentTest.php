@@ -80,4 +80,20 @@ class StripeCheckoutFulfillmentTest extends TestCase
         $this->expectException(\RuntimeException::class);
         app(StripeCheckoutFulfillment::class)->fulfill($session);
     }
+
+    public function test_it_throws_when_the_premium_plan_is_not_configured(): void
+    {
+        // Reproduces the production bug: if the `plans` table has no
+        // 'premium' row (e.g. PlanSeeder never ran there), fulfill() used to
+        // return silently as if it had succeeded, and a paying customer
+        // would be told they're Premium while plan_id was never touched.
+        Plan::where('name', 'premium')->delete();
+
+        $user = User::factory()->create();
+        $session = $this->fakeCheckoutSession(['client_reference_id' => (string) $user->id]);
+
+        $this->expectException(\RuntimeException::class);
+        $this->expectExceptionMessage('The Premium plan is not configured.');
+        app(StripeCheckoutFulfillment::class)->fulfill($session);
+    }
 }
