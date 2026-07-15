@@ -240,7 +240,12 @@ class CanvasApiController extends Controller
         $baseDir = auth()->id().'/documents/'.$document->id.'/pages';
 
         try {
-            $this->storageTransaction->replaceDirectory($baseDir, $pageFiles, function () use (
+            // Row lock serializes this write against any other concurrent save
+            // for the same document — see the comment on
+            // DocumentController::savePages() for the race this closes.
+            DB::transaction(function () use (
+                $baseDir,
+                $pageFiles,
                 $document,
                 $wasNew,
                 $title,
@@ -251,17 +256,31 @@ class CanvasApiController extends Controller
                 $pageBackgroundColor,
                 $pageNumbers,
             ) {
-                $document->title = $title;
-                $document->folder_id = $folderId;
-                $document->content = is_array($documentData) ? $documentData : null;
-                $document->guide_mode = $guideMode;
-                $document->guides_visible = $guidesVisible;
-                $document->page_background_color = $pageBackgroundColor;
-                $document->page_count = count($pageNumbers);
-                $document->version = $wasNew ? 1 : ((int) $document->version + 1);
-                $document->save();
+                Document::where('id', $document->id)->lockForUpdate()->first();
 
-                return $document;
+                $this->storageTransaction->replaceDirectory($baseDir, $pageFiles, function () use (
+                    $document,
+                    $wasNew,
+                    $title,
+                    $folderId,
+                    $documentData,
+                    $guideMode,
+                    $guidesVisible,
+                    $pageBackgroundColor,
+                    $pageNumbers,
+                ) {
+                    $document->title = $title;
+                    $document->folder_id = $folderId;
+                    $document->content = is_array($documentData) ? $documentData : null;
+                    $document->guide_mode = $guideMode;
+                    $document->guides_visible = $guidesVisible;
+                    $document->page_background_color = $pageBackgroundColor;
+                    $document->page_count = count($pageNumbers);
+                    $document->version = $wasNew ? 1 : ((int) $document->version + 1);
+                    $document->save();
+
+                    return $document;
+                });
             });
 
             if ($wasNew) {

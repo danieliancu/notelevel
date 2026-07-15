@@ -278,50 +278,63 @@ class DocumentController extends Controller
         $baseDir = auth()->id().'/documents/'.$document->id.'/pages';
         $disk = Storage::disk('tenants');
 
-        $pageFiles = [];
-        if ($disk->directoryExists($baseDir)) {
-            foreach ($disk->files($baseDir) as $existingFile) {
-                $filename = basename($existingFile);
-                $existingNumber = (int) pathinfo($filename, PATHINFO_FILENAME);
-                if (! isset($incoming[$existingNumber])) {
-                    $pageFiles[$filename] = $disk->get($existingFile);
+        // Two overlapping saves for the same document (a manual save racing an
+        // autosave, or a client retry firing while the original request is
+        // still in flight) previously had no protection: each request reads
+        // the existing-files snapshot independently, and whichever finishes
+        // last silently overwrites the whole directory with its own stale
+        // snapshot, dropping pages the other request had just written — with
+        // no exception anywhere. A DB row lock (rather than Cache::lock)
+        // serializes writes per document without depending on which cache
+        // driver is configured.
+        return DB::transaction(function () use ($document, $disk, $baseDir, $incoming) {
+            Document::where('id', $document->id)->lockForUpdate()->first();
+
+            $pageFiles = [];
+            if ($disk->directoryExists($baseDir)) {
+                foreach ($disk->files($baseDir) as $existingFile) {
+                    $filename = basename($existingFile);
+                    $existingNumber = (int) pathinfo($filename, PATHINFO_FILENAME);
+                    if (! isset($incoming[$existingNumber])) {
+                        $pageFiles[$filename] = $disk->get($existingFile);
+                    }
                 }
             }
-        }
-        foreach ($incoming as $number => $binary) {
-            $pageFiles[$number.'.jpg'] = $binary;
-        }
+            foreach ($incoming as $number => $binary) {
+                $pageFiles[$number.'.jpg'] = $binary;
+            }
 
-        $currentTotalExcludingDocument = Document::where('id', '!=', $document->id)->sum('page_count');
-        if ($this->quotas->canvasPagesCapExceeded(auth()->user(), $currentTotalExcludingDocument, count($pageFiles))) {
-            // Etapa 4 monitoring (AUDIT.md "Migrare autosave"): another silent
-            // business response worth a signal — actual storage write failures
-            // already reach Log/OperationalAlert via the default exception handler.
-            Log::info('canvas.autosave_pages_quota_exceeded', [
-                'document_id' => $document->id,
-                'user_id' => auth()->id(),
-            ]);
+            $currentTotalExcludingDocument = Document::where('id', '!=', $document->id)->sum('page_count');
+            if ($this->quotas->canvasPagesCapExceeded(auth()->user(), $currentTotalExcludingDocument, count($pageFiles))) {
+                // Etapa 4 monitoring (AUDIT.md "Migrare autosave"): another silent
+                // business response worth a signal — actual storage write failures
+                // already reach Log/OperationalAlert via the default exception handler.
+                Log::info('canvas.autosave_pages_quota_exceeded', [
+                    'document_id' => $document->id,
+                    'user_id' => auth()->id(),
+                ]);
 
-            return response()->json([
-                'ok' => false,
-                'error' => 'You have reached your plan\'s page limit. Upgrade to Premium for unlimited pages.',
-            ], 402);
-        }
+                return response()->json([
+                    'ok' => false,
+                    'error' => 'You have reached your plan\'s page limit. Upgrade to Premium for unlimited pages.',
+                ], 402);
+            }
 
-        $pageNumbers = array_map(
-            fn (string $filename) => (int) pathinfo($filename, PATHINFO_FILENAME),
-            array_keys($pageFiles),
-        );
-        sort($pageNumbers);
+            $pageNumbers = array_map(
+                fn (string $filename) => (int) pathinfo($filename, PATHINFO_FILENAME),
+                array_keys($pageFiles),
+            );
+            sort($pageNumbers);
 
-        $this->storageTransaction->replaceDirectory($baseDir, $pageFiles, function () use ($document, $pageNumbers) {
-            $document->page_count = count($pageNumbers);
-            $document->save();
+            $this->storageTransaction->replaceDirectory($baseDir, $pageFiles, function () use ($document, $pageNumbers) {
+                $document->page_count = count($pageNumbers);
+                $document->save();
 
-            return $document;
+                return $document;
+            });
+
+            return response()->json(['ok' => true, 'pages' => $pageNumbers]);
         });
-
-        return response()->json(['ok' => true, 'pages' => $pageNumbers]);
     }
 
     private function resolveFolderId(?string $folderId): ?int
