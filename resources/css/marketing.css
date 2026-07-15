@@ -1080,6 +1080,18 @@ button { font: inherit; cursor: pointer; border: none; background: none; color: 
   margin-bottom: 28px;
 }
 
+/* Honeypot field (contact + newsletter forms): invisible to sighted users
+   and skipped by screen readers/tab order, but still present in the DOM for
+   naive bots that auto-fill every input to find. Positioned off-screen
+   rather than display:none/hidden, since some scrapers skip those. */
+.hp-field {
+  position: absolute;
+  left: -9999px;
+  width: 1px;
+  height: 1px;
+  overflow: hidden;
+}
+
 .contact-form { display: flex; flex-direction: column; gap: 20px; }
 
 .contact-form-row { display: grid; grid-template-columns: 1fr 1fr; gap: 20px; }

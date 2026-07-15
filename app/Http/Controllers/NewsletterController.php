@@ -13,6 +13,10 @@ class NewsletterController extends Controller
     {
         $data = $request->validate([
             'email' => ['required', 'email', 'max:255'],
+            // Honeypot: a field real visitors never see or fill (hidden via
+            // CSS in home.blade.php's newsletter form) — anything other than
+            // empty means an automated submission.
+            'website' => ['prohibited'],
         ]);
 
         $subscriber = NewsletterSubscriber::firstOrCreate(['email' => $data['email']]);

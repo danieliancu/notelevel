@@ -42,4 +42,17 @@ class NewsletterSubscriptionTest extends TestCase
         $response->assertSessionHasErrors(['email']);
         Mail::assertNothingSent();
     }
+
+    public function test_filled_honeypot_field_is_rejected(): void
+    {
+        Mail::fake();
+
+        $response = $this->from('/')->post('/newsletter/subscribe', [
+            'email' => 'reader@example.com',
+            'website' => 'https://spammer.example.com',
+        ]);
+
+        $response->assertSessionHasErrors(['website']);
+        Mail::assertNothingSent();
+    }
 }

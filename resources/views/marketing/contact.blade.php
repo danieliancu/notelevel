@@ -39,6 +39,11 @@
       <form method="POST" action="{{ route('contact.send') }}" class="contact-form" novalidate>
         @csrf
 
+        <div class="hp-field" aria-hidden="true">
+          <label for="website">Website</label>
+          <input type="text" id="website" name="website" tabindex="-1" autocomplete="off" />
+        </div>
+
         <div class="contact-form-row">
           <div class="contact-field">
             <label for="first_name">First name*</label>

@@ -476,6 +476,10 @@
 
       <form class="newsletter-form" action="{{ route('newsletter.subscribe') }}" method="post">
         @csrf
+        <div class="hp-field" aria-hidden="true">
+          <label for="newsletter-website">Website</label>
+          <input type="text" id="newsletter-website" name="website" tabindex="-1" autocomplete="off" />
+        </div>
         <label class="newsletter-label" for="newsletter-email">Email address</label>
         <div class="newsletter-field">
           <input type="email" id="newsletter-email" name="email" placeholder="you@email.com" required />

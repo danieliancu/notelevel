@@ -66,4 +66,19 @@ class ContactFormTest extends TestCase
         $response->assertRedirect(route('contact'));
         Mail::assertSent(ContactFormMail::class);
     }
+
+    public function test_filled_honeypot_field_is_rejected(): void
+    {
+        Mail::fake();
+
+        $response = $this->post('/contact', [
+            'first_name' => 'Jane',
+            'last_name' => 'Doe',
+            'email' => 'jane@example.com',
+            'website' => 'https://spammer.example.com',
+        ]);
+
+        $response->assertSessionHasErrors(['website']);
+        Mail::assertNothingSent();
+    }
 }
