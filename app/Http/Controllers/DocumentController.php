@@ -9,6 +9,8 @@ use App\Services\PdfPageImportReconciler;
 use App\Services\PlanQuotaService;
 use App\Services\TenantStorageTransaction;
 use App\Support\NameSanitizer;
+use Illuminate\Database\QueryException;
+use Illuminate\Http\JsonResponse;
 use Illuminate\Http\Request;
 use Illuminate\Support\Facades\DB;
 use Illuminate\Support\Facades\Log;
@@ -47,42 +49,67 @@ class DocumentController extends Controller
 
         $existing = Document::where('title', $title)->where('folder_id', $folderId)->first();
         if ($existing) {
-            if (! $request->boolean('overwrite')) {
-                return response()->json([
-                    'ok' => false,
-                    'exists' => true,
-                    'error' => 'A document with that name already exists.',
-                ], 409);
-            }
+            return $this->overwriteExistingOrConflict($request, $existing);
+        }
 
-            $existing->update([
+        try {
+            $document = Document::create([
+                'title' => $title,
+                'folder_id' => $folderId,
                 'content' => $request->input('content'),
                 'guide_mode' => $request->input('guideMode', 'none'),
                 'guides_visible' => $request->boolean('guidesVisible'),
                 'page_background_color' => $request->input('pageBackgroundColor', '#ffffff'),
                 'page_count' => (int) $request->input('page_count', 0),
-                'version' => DB::raw('version + 1'),
             ]);
-            $existing->refresh();
+        } catch (QueryException $exception) {
+            if ((string) $exception->getCode() !== '23000') {
+                throw $exception;
+            }
 
-            $this->pdfPageImports->reconcile($existing, $request->input('content'));
+            // Two overlapping "Save" requests for a brand-new document (a
+            // double-click, or a client retry firing before the first
+            // response lands) can both see no existing row and both try to
+            // create one; the unique (user_id, folder_id, title) constraint
+            // only lets one through. Without this, the loser surfaced a raw
+            // 500 as "Save failed" even though the document had, in fact,
+            // just been saved by the other request.
+            $existing = Document::where('title', $title)->where('folder_id', $folderId)->first();
+            if (! $existing) {
+                throw $exception;
+            }
 
-            return response()->json($existing);
+            return $this->overwriteExistingOrConflict($request, $existing);
         }
 
-        $document = Document::create([
-            'title' => $title,
-            'folder_id' => $folderId,
+        $this->pdfPageImports->reconcile($document, $request->input('content'));
+
+        return response()->json($document, 201);
+    }
+
+    private function overwriteExistingOrConflict(Request $request, Document $existing): JsonResponse
+    {
+        if (! $request->boolean('overwrite')) {
+            return response()->json([
+                'ok' => false,
+                'exists' => true,
+                'error' => 'A document with that name already exists.',
+            ], 409);
+        }
+
+        $existing->update([
             'content' => $request->input('content'),
             'guide_mode' => $request->input('guideMode', 'none'),
             'guides_visible' => $request->boolean('guidesVisible'),
             'page_background_color' => $request->input('pageBackgroundColor', '#ffffff'),
             'page_count' => (int) $request->input('page_count', 0),
+            'version' => DB::raw('version + 1'),
         ]);
+        $existing->refresh();
 
-        $this->pdfPageImports->reconcile($document, $request->input('content'));
+        $this->pdfPageImports->reconcile($existing, $request->input('content'));
 
-        return response()->json($document, 201);
+        return response()->json($existing);
     }
 
     public function update(Request $request, Document $document)

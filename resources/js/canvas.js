@@ -4266,7 +4266,12 @@
         }
 
         function normalizeGuideMode(mode) {
-            if (mode === 'dictation') {
+            // 'lined' is the REST autosave vocabulary (see mapGuideModeForRest()
+            // below and DocumentController's validation) — documents saved via
+            // that path store guide_mode as 'lined', not 'ruled'. Without this
+            // alias, reopening such a document always fell back to 'none'
+            // (blank paper) regardless of what guide mode was actually saved.
+            if (mode === 'dictation' || mode === 'lined') {
                 return 'ruled';
             }
 
@@ -9915,6 +9920,13 @@ return { ok: false, message: (err && err.message) || 'Network error while readin
                             console.error(error);
                             loadedFailedPages.add(Number(pageNumber));
                         }
+                    } else {
+                        // No page_image URL at all for this page (the server
+                        // only advertises one when the file actually exists) —
+                        // same "nothing to show" outcome as a failed fetch,
+                        // unless a vector model covers it instead (checked
+                        // once loadedModels is populated, below).
+                        loadedFailedPages.add(Number(pageNumber));
                     }
                 }
 

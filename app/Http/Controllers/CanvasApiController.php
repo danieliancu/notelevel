@@ -113,19 +113,35 @@ class CanvasApiController extends Controller
         $hasMore = $documents->count() > $limit;
         $documents = $documents->take($limit);
 
-        $files = $documents->map(function (Document $document) {
+        $disk = Storage::disk('tenants');
+
+        $files = $documents->map(function (Document $document) use ($disk) {
             $folderName = $document->folder?->name ?? '';
             $ref = $this->ref($folderName, $document->title);
             $pages = $this->pageNumbersFor($document);
             $pageUrls = [];
             foreach ($pages as $pageNumber) {
-                $pageUrls[(string) $pageNumber] = "/canvas/api?action=page_image&id={$document->id}&page={$pageNumber}";
+                // Only advertise a page_image URL when the file genuinely
+                // exists — otherwise the client (thumbnail <img>, or
+                // loadDocument()) requests a URL that's guaranteed to 404.
+                $path = $document->user_id.'/documents/'.$document->id.'/pages/'.$pageNumber.'.jpg';
+                if ($disk->exists($path)) {
+                    $pageUrls[(string) $pageNumber] = "/canvas/api?action=page_image&id={$document->id}&page={$pageNumber}";
+                }
+            }
+
+            $firstPageUrl = null;
+            foreach ($pages as $pageNumber) {
+                if (isset($pageUrls[(string) $pageNumber])) {
+                    $firstPageUrl = $pageUrls[(string) $pageNumber];
+                    break;
+                }
             }
 
             return [
                 'name' => $ref,
                 'folder' => $folderName,
-                'url' => $pageUrls[(string) ($pages[0] ?? 1)] ?? '',
+                'url' => $firstPageUrl ?? '',
                 'pages' => $pages,
                 'pageUrls' => $pageUrls,
                 'documentUrl' => "/canvas/api?action=get_document&id={$document->id}",
