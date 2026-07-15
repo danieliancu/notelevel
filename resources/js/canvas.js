@@ -9548,7 +9548,16 @@ return { ok: false, message: (err && err.message) || 'Network error while readin
                     item.className = 'file-item';
                     thumbWrap.className = 'file-thumb';
                     thumb.alt = '';
-                    thumb.src = file.url;
+                    thumb.onerror = () => {
+                        thumb.onerror = null;
+                        thumb.removeAttribute('src');
+                        thumbWrap.classList.add('is-empty');
+                    };
+                    if (file.url) {
+                        thumb.src = file.url;
+                    } else {
+                        thumbWrap.classList.add('is-empty');
+                    }
                     text.className = 'file-item-text';
                     name.textContent = shortFileLabel(file.name);
                     name.title = displayName(file.name);
