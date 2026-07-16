@@ -192,7 +192,18 @@ class CanvasAiController extends Controller
             $pageText = mb_substr($pageText, 0, 20000, 'UTF-8');
         }
 
-        $result = $this->ai->chat($message, $catalog, $slashCommand, $selectedIds, $pageText);
+        $shapeTypes = [];
+        foreach ((array) $request->input('shapeTypes', []) as $shapeType) {
+            if (is_string($shapeType) && preg_match('/^[a-zA-Z][a-zA-Z0-9]{0,39}$/', $shapeType) === 1) {
+                $shapeTypes[] = $shapeType;
+            }
+            if (count($shapeTypes) >= 60) {
+                break;
+            }
+        }
+        $shapeTypes = array_values(array_unique($shapeTypes));
+
+        $result = $this->ai->chat($message, $catalog, $slashCommand, $selectedIds, $pageText, $shapeTypes);
         if (! ($result['ok'] ?? false)) {
             return response()->json(['ok' => false, 'error' => (string) ($result['error'] ?? 'AI chat failed.')], 500);
         }
