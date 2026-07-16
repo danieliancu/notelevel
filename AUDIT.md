@@ -32,6 +32,14 @@ In plus, de facut:
 >
 > **Descoperire nouă azi — bug real de mediu, nu de cod (vezi OPS-02 mai jos):** panoul admin întorcea `500` pe *orice* pagină (`RuntimeException: The "intl" PHP extension is required`) din cauza unei nepotriviri de căutare de DLL-uri Windows între directorul Apache și directorul PHP din XAMPP — `intl` funcționa perfect în CLI (folosit de suita de teste), dar eșua silențios sub `mod_php`. Concluzia importantă: **suita de teste PHPUnit, care rulează exclusiv prin CLI, nu ar fi putut niciodată detecta acest bug** — a fost prins doar pentru că userul a accesat efectiv panoul din browser. Fix aplicat local (copiere DLL-uri ICU lângă `httpd.exe`) e specific XAMPP și **nu se aplică pe Forge** (php-fpm, altă topologie de directoare) — dar recomandarea rămâne validă acolo: verifică explicit `php -m | grep intl` cu binarul PHP folosit efectiv de php-fpm/Forge, nu doar cu binarul din CLI, înainte de a considera deploy-ul reușit.
 
+> **Actualizare audit — 16 iulie 2026:** sesiune de funcționalități noi pe canvas, fără legătură cu blocajele de producție de mai sus (rămân valabile ca stare). Livrat: fix real de bug pe mobil (selecția de text din tastatura virtuală nu pornea niciodată la prima atingere, din cauza unui `pointercancel` declanșat de re-randare sincronă a DOM-ului), plus feature complet de selecție prin long-press cu copy/cut; aliniere pe verticală a barei de jos a canvasului; extinderea librăriei de shape-uri de la 8 la 18 forme; implementarea completă a tab-ului **Infographics** (8 tipuri de grafice — vezi DEBT, „Infographics redat ca placeholder", acum rezolvat); un mecanism nou prin care orice formă/infografic adăugat în librărie devine automat creabil prin AI, fără nicio modificare de backend. Detalii complete în secțiunea 19.
+>
+> **Notă de rigoare, diferită de restul acestui document:** spre deosebire de secțiunile 11-18, care au verificare prin teste PHPUnit automate și/sau Playwright end-to-end, lucrările de azi sunt verificate **doar** prin `npm run build`/`php -l` (sintaxă, nu comportament) și o confirmare manuală a userului că testul e OK, fără detalii documentate despre ce anume s-a testat. **Nu există nicio suită automată nouă** pentru shape library, infographics sau selecția din tastatura virtuală. Tratează secțiunea 19 ca „implementat și verificat vizual o dată", nu ca „testat și acoperit ca restul aplicației".
+>
+> **Impact asupra constatărilor existente:** `resources/js/canvas.js` a crescut de la 9.739 la 12.359 linii (+27%) și bundle-ul de la 182 kB la 215 kB minificat — **doar în această sesiune** (vezi ARC-01, actualizat). Inserarea compozită (un click sau o comandă AI poate adăuga până la 9 elemente într-o singură acțiune) amplifică expunerea deja documentată la VAL-01 — nu e o gaură nouă, dar aceeași gaură se umple acum mai repede (vezi nota adăugată la VAL-01).
+>
+> Scorurile din tabelul de mai jos (secțiunea 1) **nu au fost recalculate** pentru 16 iulie — feature-urile de azi nu schimbă verdictul de producție (canvas-ul rămâne oricum în afara perimetrului de securitate/date auditat critic), dar o re-evaluare a rândurilor „Arhitectură și mentenanță" și „Testare și livrare" ar fi oportună la următorul audit complet.
+
 ## 1. Rezumat executiv
 
 ### Verdict
@@ -253,19 +261,23 @@ Absența advisory-urilor nu demonstrează securitatea codului propriu și nu red
 
 **Criteriu de verificare:** aceeași operație are o singură implementare de business și teste contractuale pentru ambele adaptoare cât timp coexistă.
 
-### VAL-01 — Validarea documentelor și a payloadurilor canvas este insuficientă
+### VAL-01 — Validarea documentelor și a payloadurilor canvas este insuficientă — ✅ Rezolvat parțial 16 iulie 2026
 
 **Severitate:** Mediu  
-**Stare:** Confirmată  
+**Stare:** ✅ Rezolvată parțial — verificată prin 9 teste automate noi  
 **Domeniu:** date, disponibilitate
 
-**Dovadă:** `DocumentController.php:21-38` acceptă `content`, moduri, culoare și `page_count` fără reguli Laravel, dimensiuni maxime sau schemă. Update/autosave păstrează aceeași abordare la liniile 43-52 și 113-127. Endpointul legacy decodează payloaduri și imagini base64 în memorie.
+**Dovadă (problema originală):** `DocumentController.php:21-38` accepta `content`, moduri, culoare și `page_count` fără reguli Laravel, dimensiuni maxime sau schemă. Update/autosave păstrau aceeași abordare la liniile 43-52 și 113-127. Endpointul legacy decoda payloaduri și imagini base64 în memorie fără nicio validare.
 
-**Impact:** payloaduri foarte mari, valori invalide sau structuri incompatibile pot consuma memorie, corupe documente și produce erori în client.
+**Impact:** payloaduri foarte mari, valori invalide sau structuri incompatibile puteau consuma memorie, corupe documente și produce erori în client.
 
-**Remediere:** FormRequest cu limite de bytes și număr de elemente, enum-uri, regex culoare, `page_count` bounded și schemă versionată pentru content. Impune limite și la web server/PHP.
+**Notă 16 iulie 2026, dimineață — amplificare observată înainte de fix:** tab-ul Infographics (secțiunea 19) inserează compozit, până la 9 elemente `smart-shape`/text dintr-o singură acțiune. Asta a crescut volumul care putea trece prin lipsa de validare, fără să schimbe severitatea constatării — motivul direct pentru care fix-ul de mai jos a fost prioritizat imediat după.
 
-**Criteriu de verificare:** payloadurile invalide și supradimensionate primesc 422/413 fără scrieri parțiale.
+**Remediere aplicată:** regulă de validare nouă `App\Rules\CanvasDocumentContent` (bounds: `content` serializat ≤ 20MB, ≤ 10.000 pagini, ≤ 3.000 elemente/pagină — limite generoase, gândite ca plasă anti-abuz, nu ca o cotă de produs; cota reală de pagini per plan rămâne exclusiv în `PlanQuotaService`, neschimbată) + helper partajat `App\Support\DocumentPayloadRules` (rules pentru `content`, `page_count`, `guideMode`, `pageBackgroundColor`, imagine de pagină base64 ≤ ~8MB decodat), aplicate consecvent pe **ambele** suprafețe: `DocumentController::store/update/autosave/savePages` (prin `$request->validate()`) și `CanvasApiController::save` (legacy — prin `Validator::make()` manual, pentru că `document`/`pages` sosesc ca string JSON decodat manual, nu ca field nativ). O imagine de pagină supradimensionată pe suprafața legacy e omisă din pagini (comportament simetric cu tratarea deja existentă a imaginilor malformate), nu respinge tot request-ul.
+
+**Ce rămâne deschis, deliberat scos din scop:** schema versionată/validarea profundă a fiecărui element individual din `content` (tip, câmpuri, coordonate) — bounds-urile de mai sus verifică mărime/număr, nu corectitudinea structurală a fiecărui element. Rămâne un pas remediere viitor, dacă se dovedește necesar.
+
+**Verificare:** `tests/Feature/DocumentContentValidationTest.php` (9 teste noi, verde) — acoperă: content supradimensionat respins pe `store`/`update`/`autosave`; pagină cu prea multe elemente respinsă; imagine de pagină supradimensionată respinsă pe REST (`savePages`, 422) și omisă pe legacy (`save`, restul paginilor valide salvate cu succes); documente normale acceptate pe ambele suprafețe. Suită completă: 115 teste, 1 eșec pre-existent și neafectat (`P1SecurityHeadersTest`, fragil de mediu — detectare Vite dev server local, confirmat că eșua identic și înainte de acest fix).
 
 ### UP-01 — Favoritele PDF nu aplică limită de mărime sau cota planului
 
@@ -425,7 +437,9 @@ Absența advisory-urilor nu demonstrează securitatea codului propriu și nu red
 **Stare:** Confirmată  
 **Domeniu:** mentenanță
 
-**Dovadă:** `resources/js/canvas.js` are aproximativ 9.739 linii și 472.758 bytes; `resources/css/canvas.css` are aproximativ 4.084 linii și 89.888 bytes. Build-ul produce un singur chunk canvas de 182,16 kB minificat.
+**Dovadă (10 iulie 2026):** `resources/js/canvas.js` avea aproximativ 9.739 linii și 472.758 bytes; `resources/css/canvas.css` avea aproximativ 4.084 linii și 89.888 bytes. Build-ul producea un singur chunk canvas de 182,16 kB minificat.
+
+**Actualizare 16 iulie 2026 — trend confirmat crescător, nu doar stagnant:** după sesiunea descrisă în secțiunea 19 (shape library extinsă + tab Infographics), `resources/js/canvas.js` are acum **12.359 linii și 561.414 bytes** (+27% linii față de 10 iulie, doar din această sesiune), iar `resources/css/canvas.css` are **4.879 linii și 93.827 bytes** (+19%). Bundle-ul de producție a crescut la **215,66 kB minificat**. Constatarea nu mai descrie doar o datorie tehnică neatinsă — descrie o datorie tehnică activ agravată, la fiecare sesiune de feature-uri noi adăugate fără nicio extracție de modul.
 
 **Impact:** risc ridicat de regresii, ownership neclar, testare unitară dificilă și cost mare al schimbărilor.
 
@@ -479,7 +493,7 @@ Aceste elemente nu sunt prezentate automat ca vulnerabilități:
 |---|---|---|
 | Controller legacy cu dispatcher `action` | Datorie tehnică majoră | Deprecare etapizată și servicii comune |
 | API REST paralel | Migrare incompletă | Contract unic, versionat |
-| `Infographics` redat ca placeholder în canvas | Funcționalitate incompletă | Ascundere până la implementare sau marcaj „coming soon” |
+| ~~`Infographics` redat ca placeholder în canvas~~ — ✅ implementat 16 iulie 2026 (secțiunea 19), 8 tipuri de grafice | Funcționalitate incompletă → rezolvată funcțional | Rămâne fără acoperire de test automată (PHPUnit/Playwright) — vezi nota de rigoare din secțiunea 19 |
 | README generic | Datorie operațională | Documentație Notelevel |
 | Testele Example/Unit placeholder | Datorie de testare | Înlocuire cu teste de produs |
 | CSS/JS canvas monolitic | Datorie de mentenanță | Modularizare incrementală |
@@ -925,3 +939,49 @@ Userul a raportat: „cand e pagina de pdf e adusa in canvas, trebuie sa fie sem
 **Verificare end-to-end reală** (Playwright, cont Premium temporar): upload PDF 3 pagini → duplicare pagina 1 (bulk „Duplicate") → 4 carduri („Page 1", „Page 1 (copy)", „Page 2", „Page 3") → import doar prima ocurență → redeschidere proaspătă a grilei (refetch server) → confirmat: exact 1 card blocat („Page 1"), celelalte 3 (inclusiv copia paginii 1) rămân libere.
 
 Suită completă: **103 teste, 314 assertions**, verde (+5 față de secțiunea 17). `npm run build` curat. Cont de test temporar și toate datele asociate șterse după verificare.
+
+## 19. Selecție de text pe tastatura virtuală, aliniere bară de jos, librărie de shape-uri extinsă, tab Infographics complet, whitelist AI dinamic (16 iulie 2026)
+
+Cinci cereri succesive în aceeași sesiune, pe zona canvas. **Notă de rigoare importantă, valabilă pentru toată această secțiune**: spre deosebire de secțiunile 11-18 de mai sus, niciuna dintre lucrările descrise aici nu are teste PHPUnit noi și nicio verificare Playwright end-to-end. Verificarea s-a limitat la `npm run build`/`php -l` (confirmă doar sintaxa, nu comportamentul) și, pentru shape library/infographics, la o testare manuală directă a userului în browser, confirmată ca fiind OK dar fără detalii documentate despre exact ce s-a verificat. Tratează constatările de mai jos ca „implementat, verificare superficială", nu ca „testat și acoperit".
+
+### Fix real de bug: selecția de text din tastatura virtuală nu pornea niciodată
+
+**Cauza**: la prima atingere pe un frame de text/tabel neselectat, handler-ul `pointerdown` apela sincron `startVirtualTextEditing()`/`startVirtualTableEditing()`, care la rândul lor apelau sincron `renderTextLayer()` — funcție care face `textLayer.innerHTML = ''` și reconstruiește tot DOM-ul, inclusiv nodul exact de sub degetul utilizatorului, în timp ce atingerea era încă activă. Pe browsere mobile reale (nu în devtools cu mouse emulat, unde testarea inițială a trecut), eliminarea din DOM a elementului care a primit `pointerdown` în timp ce gestul e activ declanșează `pointercancel` — care oprea imediat orice timer de long-press pornit pentru selecție.
+
+**Fix**: urmărirea gestului de selecție (`trackVirtualCaretDrag`) pornește acum doar pe a doua atingere, când frame-ul e deja în modul de editare (`alreadyEditing === true`) și nodul DOM nu mai e reconstruit sincron în handler.
+
+**Feature complet adăugat pe lângă fix**: selecție de text prin long-press (450ms, prag 8px mișcare) + extindere prin drag, evidențiere vizuală (`<mark class="virtual-selection">`), taste noi Copy/Cut pe tastatura virtuală (cu icoane SVG), înlocuire/ștergere a selecției la tastare/backspace/paste.
+
+### Aliniere pe verticală a barei de jos a canvasului
+
+`.page-control`, `.delete-page-float` și `.current-file-badge` foloseau `bottom`/înălțimi independente, necorelate — `.delete-page-float` avea explicit `bottom: -13px` hardcodat (ignora `env(safe-area-inset-bottom)`), plus un `transform: translateY(-7px)` suplimentar pe iconița din interior, ambele valori „ajustate din ochi" fără legătură cu restul. Fix: variabile CSS partajate `--bottom-bar-offset`/`--bottom-bar-height` în `:root`, folosite de toate cele trei elemente pentru a calcula poziții care se centrează pe aceeași axă orizontală, indiferent de lățimea ecranului.
+
+### Librărie de shape-uri: de la 8 la 18 forme
+
+**Poligoane noi** (pentagon, hexagon, stea, paralelogram, trapez) — zero cod nou de randare; motorul `renderSmartPolygon()` era deja generic pentru orice poligon cu N puncte (triunghiul și rombul îl foloseau deja). Doar generare de geometrie + listă albă de tipuri + iconițe SVG.
+
+**Forme curbate noi** (cilindru, con, semicerc, inel, speech bubble) — bounds-based, cu funcții proprii de randare (nu se pretează la motorul generic de poligoane, au margini curbe). **Bug propriu găsit și corectat în aceeași sesiune**: la inserare, formele curbate nu erau nici selectabile, nici rotabile — lipseau din `smartShapeBounds()` (funcția care calculează chenarul de selecție) și din randare nu citeau `element.rotation`. Corectat înainte de finalul sesiunii.
+
+### Tab Infographics — implementat complet (înlocuiește placeholder-ul „Coming soon")
+
+8 tipuri de grafice standard tip Excel: Bar Chart, Column Chart, Donut Chart, Line Chart, Progress Ring, Funnel Chart, Pyramid Chart, Stacked Bar Chart. Toate compuse din elemente independente (`rectangle`, `line`, `circle`, `trapezoid`, plus un shape type nou `donutSegment`), inserate separat în `model.elements` — **fiecare piesă rămâne selectabilă/mutabilă/redimensionabilă individual după inserare**, la cererea explicită a userului („nu vreau lipire"). O singură acțiune de undo acoperă tot graficul la inserare.
+
+`donutSegment` e un arc cu `lineWidth` foarte gros (simulează o felie de inel colorat), pentru că sistemul de randare al aplicației e strict pe contur (`ctx.stroke()`) — nu există `ctx.fill()`/culoare de fundal nicăieri în motorul de shape-uri, deci feliile „pline" sunt un truc vizual, nu fill real. Etichete cu valori/procente adăugate ca elemente text separate lângă fiecare piesă (a necesitat extinderea funcției de inserare compozită să accepte și draft-uri de tip text, nu doar shape-uri).
+
+### Whitelist AI dinamic pentru shape-uri și infografii
+
+Anterior, comanda AI de creare a unei forme (`create`, `elementType: 'shape'`) folosea o listă albă hardcodată în `AiService.php`, cu doar cele 7 forme originale — niciuna dintre formele noi nu putea fi cerută prin chat. Fix: frontend-ul trimite acum lista curentă de tipuri (`shapeTypes`/`infographicTypes`, derivate automat din `SHAPE_LIBRARY`/`INFOGRAPHIC_LIBRARY`) la fiecare cerere de chat; `CanvasAiController` le sanitizează (regex alfanumeric, max 60 elemente); `AiService` le folosește pentru a construi dinamic atât textul promptului, cât și `enum`-ul din schema JSON structurată trimisă providerului. **Efect**: orice formă/infografic nou adăugat în librărie devine automat creabil prin AI, fără nicio modificare de backend.
+
+Decizie de design notabilă: la crearea unui infografic prin AI, un eventual `params.color` din răspunsul modelului e ignorat explicit de cod (nu doar prin instrucțiune de prompt) — fiecare piesă își păstrează culoarea presetată din paletă, ca să nu se piardă diferențierea vizuală a graficului.
+
+### Impact asupra constatărilor existente din acest document
+
+- **ARC-01** (bundle canvas monolitic) — vezi actualizarea cifrelor la constatare, secțiunea 4. Creștere de +27% doar în această sesiune.
+- **VAL-01** (validare insuficientă a payload-urilor canvas) — vezi nota adăugată la constatare, secțiunea 4. Inserarea compozită amplifică volumul care poate trece prin lipsa de validare existentă.
+- **Registrul de datorie tehnică** (secțiunea 7) — rândul „Infographics redat ca placeholder" e acum rezolvat funcțional, dar fără acoperire de test automată (vezi nota de rigoare de la începutul acestei secțiuni).
+
+### Verificare
+
+Ce s-a făcut: `npm run build` (Vite) curat după fiecare modificare; `php -l` pe fișierele PHP atinse (`CanvasAiController.php`, `AiService.php`); o sesiune de testare manuală a userului direct în aplicație, confirmată ca fiind OK.
+
+Ce nu s-a făcut, spre deosebire de restul acestui document: nicio suită PHPUnit nouă, nicio verificare Playwright automată, niciun test de regresie pentru shape library/infographics/selecția din tastatura virtuală. Nu există dovadă documentată că toate cele 18 forme și toate cele 8 infografii au fost efectiv inserate și inspectate vizual una câte una, nici că fluxul AI de creare a fost testat cu o cerere reală către provider.
