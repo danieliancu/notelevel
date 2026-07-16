@@ -86,7 +86,9 @@ class AiService
 
     private const DEFAULT_SHAPE_TYPES = ['line', 'arrow', 'rectangle', 'circle', 'ellipse', 'triangle', 'rhombus'];
 
-    public function chat(string $userMessage, array $catalog, string $slashCommand = '', array $selectedIds = [], string $pageText = '', array $shapeTypes = []): array
+    private const DEFAULT_INFOGRAPHIC_TYPES = ['barChart', 'columnChart', 'donutChart', 'lineChart', 'progressRing', 'funnelChart', 'pyramidChart', 'stackedBarChart'];
+
+    public function chat(string $userMessage, array $catalog, string $slashCommand = '', array $selectedIds = [], string $pageText = '', array $shapeTypes = [], array $infographicTypes = []): array
     {
         if ($slashCommand === 'summarize') {
             return $this->summarizePage($pageText);
@@ -94,6 +96,8 @@ class AiService
 
         $shapeTypes = $shapeTypes !== [] ? array_values(array_unique($shapeTypes)) : self::DEFAULT_SHAPE_TYPES;
         $shapeTypesList = implode(', ', $shapeTypes);
+        $infographicTypes = $infographicTypes !== [] ? array_values(array_unique($infographicTypes)) : self::DEFAULT_INFOGRAPHIC_TYPES;
+        $infographicTypesList = implode(', ', $infographicTypes);
 
         $model = (string) config('ai.model');
 
@@ -108,7 +112,7 @@ class AiService
             .'If no element matches the user\'s reference, or the request is ambiguous among multiple candidate elements, '
             .'respond with kind "clarify" and list short human-readable disambiguation phrases in clarifyOptions instead of guessing an id. '
             .'Supported actions on existing elements: recolor, delete, move, resize, editText, duplicate, align, distribute, translateText, highlight, calculate. '
-            .'Supported action to add new content: create (text, shape, or table) - create does not target existing elements, so targetIds must be an empty array for it. '
+            .'Supported action to add new content: create (text, shape, infographic, or table) - create does not target existing elements, so targetIds must be an empty array for it. '
             .'move, resize, align and distribute only work reliably on text, table, rectangle, circle and ellipse elements - for other shape types, or raw ink strokes ("ink" kind), prefer recolor, delete, duplicate, answer or refuse instead. '
             .'align requires params.edge to be one of left, center, right, top, middle, bottom, and at least two targetIds. '
             .'distribute requires params.axis to be horizontal or vertical, and at least three targetIds. '
@@ -117,17 +121,18 @@ class AiService
             .'highlight is used for "find" requests: resolve which elements in the catalog match the user\'s criteria and return their ids as targetIds so the app can visually select them; put a short description of what was found in message. '
             .'calculate is used when the user asks to solve, compute, or evaluate a math expression that exists on the canvas as a "formula" kind element (its catalog text field contains the LaTeX source, e.g. "\\frac{3}{4}"). '
             .'Read and evaluate that expression yourself, then set params.text to a short, clear result string (e.g. "3/4 = 0.75") - the app will place this next to the original formula unchanged. targetIds must be the formula element(s) to solve. Do not use calculate on text or table elements. '
-            ."create requires params.elementType (text, shape, or table); for text set params.text; for shape set params.shapeType (one of: {$shapeTypesList}); for table set params.rows and params.cols. "
+            ."create requires params.elementType (text, shape, infographic, or table); for text set params.text; for shape set params.shapeType (one of: {$shapeTypesList}); for infographic set params.infographicType (one of: {$infographicTypesList}); for table set params.rows and params.cols. "
+            .'An infographic inserts several linked chart pieces (e.g. bars, or donut slices) as separate elements, each with a preset palette color already applied - do not set params.color when creating an infographic, since it would flatten the whole chart to one color. '
             .'If a slashCommand hint is given, strongly prefer producing the corresponding action type unless the message clearly asks for something else, using this mapping: '
             .'create->create, duplicate->duplicate, align->align, distribute->distribute, translate->translateText, summarize->answer (summaries are handled separately and should not reach you), find->highlight, edit->recolor or move or resize or editText (whichever the message describes). '
             .'If the request is something else you cannot do, respond with kind "refuse" and a short explanation. '
             .'If the user is only asking a question about what is on the canvas, respond with kind "answer", put the answer in message, and set action to null. '
-            .'The action params object always has these fields: color, dx, dy, width, height, text, row, col, elementType, shapeType, rows, cols, edge, axis, targetLanguage. '
+            .'The action params object always has these fields: color, dx, dy, width, height, text, row, col, elementType, shapeType, infographicType, rows, cols, edge, axis, targetLanguage. '
             .'Only fill the fields relevant to the action type and set every other field to null - '
             .'recolor uses color; move uses dx/dy (relative pixel offsets); resize uses width/height (new absolute size); '
             .'editText uses text (and row/col for table cells, 0 for the first row/column); calculate also uses text, but there it holds the result YOU computed, not new input text; delete and duplicate use none of them; '
             .'align uses edge; distribute uses axis; translateText uses targetLanguage; '
-            .'create uses elementType plus text/shapeType/rows/cols as relevant to that elementType, and may also set color if the user specified one. '
+            .'create uses elementType plus text/shapeType/infographicType/rows/cols as relevant to that elementType, and may also set color if the user specified one (except for infographic, see above). '
             .'Whenever you set color (for recolor or for create), it MUST be a 6-digit hex code in the form #rrggbb (e.g. #ff0000 for red, #111827 for near-black) - never a color name, since the app only accepts hex. Pick the closest sensible hex value for any color name the user mentions. '
             .'Keep message short and conversational. Respond only with a JSON object matching the given schema.';
 
@@ -177,15 +182,16 @@ class AiService
                                             'text' => ['type' => ['string', 'null']],
                                             'row' => ['type' => ['number', 'null']],
                                             'col' => ['type' => ['number', 'null']],
-                                            'elementType' => ['type' => ['string', 'null'], 'enum' => ['text', 'shape', 'table', null]],
+                                            'elementType' => ['type' => ['string', 'null'], 'enum' => ['text', 'shape', 'infographic', 'table', null]],
                                             'shapeType' => ['type' => ['string', 'null'], 'enum' => [...$shapeTypes, null]],
+                                            'infographicType' => ['type' => ['string', 'null'], 'enum' => [...$infographicTypes, null]],
                                             'rows' => ['type' => ['number', 'null']],
                                             'cols' => ['type' => ['number', 'null']],
                                             'edge' => ['type' => ['string', 'null'], 'enum' => ['left', 'center', 'right', 'top', 'middle', 'bottom', null]],
                                             'axis' => ['type' => ['string', 'null'], 'enum' => ['horizontal', 'vertical', null]],
                                             'targetLanguage' => ['type' => ['string', 'null']],
                                         ],
-                                        'required' => ['color', 'dx', 'dy', 'width', 'height', 'text', 'row', 'col', 'elementType', 'shapeType', 'rows', 'cols', 'edge', 'axis', 'targetLanguage'],
+                                        'required' => ['color', 'dx', 'dy', 'width', 'height', 'text', 'row', 'col', 'elementType', 'shapeType', 'infographicType', 'rows', 'cols', 'edge', 'axis', 'targetLanguage'],
                                     ],
                                 ],
                                 'required' => ['type', 'targetIds', 'params'],

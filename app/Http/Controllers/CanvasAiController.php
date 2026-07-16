@@ -203,7 +203,18 @@ class CanvasAiController extends Controller
         }
         $shapeTypes = array_values(array_unique($shapeTypes));
 
-        $result = $this->ai->chat($message, $catalog, $slashCommand, $selectedIds, $pageText, $shapeTypes);
+        $infographicTypes = [];
+        foreach ((array) $request->input('infographicTypes', []) as $infographicType) {
+            if (is_string($infographicType) && preg_match('/^[a-zA-Z][a-zA-Z0-9]{0,39}$/', $infographicType) === 1) {
+                $infographicTypes[] = $infographicType;
+            }
+            if (count($infographicTypes) >= 60) {
+                break;
+            }
+        }
+        $infographicTypes = array_values(array_unique($infographicTypes));
+
+        $result = $this->ai->chat($message, $catalog, $slashCommand, $selectedIds, $pageText, $shapeTypes, $infographicTypes);
         if (! ($result['ok'] ?? false)) {
             return response()->json(['ok' => false, 'error' => (string) ($result['error'] ?? 'AI chat failed.')], 500);
         }
