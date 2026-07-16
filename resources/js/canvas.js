@@ -172,6 +172,7 @@
         let virtualKeyboardLayout = 'letters';
         let virtualKeyboardShift = false;
         let virtualKeyboardCaret = 0;
+        let virtualKeyboardSelectionAnchor = null;
         let workspaceOffsetY = 0;
         let interactionCooldownUntil = 0;
         let hasUnsavedChanges = false;
@@ -231,19 +232,19 @@
         ['q', 'w', 'e', 'r', 't', 'y', 'u', 'i', 'o', 'p'],
         ['a', 's', 'd', 'f', 'g', 'h', 'j', 'k', 'l'],
         ['shift', 'z', 'x', 'c', 'v', 'b', 'n', 'm', 'backspace'],
-        ['numbers', 'paste', 'space', 'enter', 'done']
+        ['numbers', 'copy', 'cut', 'paste', 'space', 'enter', 'done']
         ],
         numbers: [
         ['1', '2', '3', '4', '5', '6', '7', '8', '9', '0'],
         ['-', '/', ':', ';', '(', ')', '$', '&', '@', '"', '%'],
         ['symbols', '.', ',', '?', '!', "'", 'backspace'],
-        ['letters', 'paste', 'space', 'enter', 'done']
+        ['letters', 'copy', 'cut', 'paste', 'space', 'enter', 'done']
         ],
         symbols: [
         ['[', ']', '{', '}', '#', '%', '^', '*', '+', '='],
         ['_', '\\', '|', '~', '<', '>', '`', '.', ',', '-'],
         ['numbers', '.', ',', '?', '!', "'", 'backspace'],
-        ['letters', 'paste', 'space', 'enter', 'done']
+        ['letters', 'copy', 'cut', 'paste', 'space', 'enter', 'done']
         ]
         };
 
@@ -3047,7 +3048,7 @@
             setWorkspaceOffset(0);
         }
 
-        function renderVirtualTextNode(node, text, active = false, caretIndex = null) {
+        function renderVirtualTextNode(node, text, active = false, caretIndex = null, selectionAnchor = null) {
             if (!node) {
                 return;
             }
@@ -3057,6 +3058,23 @@
             node.classList.toggle('virtual-editing', active);
             if (active) {
                 const index = Math.max(0, Math.min(caretIndex === null ? safeText.length : caretIndex, safeText.length));
+
+                if (selectionAnchor !== null && selectionAnchor !== index) {
+                    const start = Math.max(0, Math.min(selectionAnchor, index));
+                    const end = Math.min(safeText.length, Math.max(selectionAnchor, index));
+                    if (start > 0) {
+                        node.appendChild(document.createTextNode(safeText.slice(0, start)));
+                    }
+                    const mark = document.createElement('mark');
+                    mark.className = 'virtual-selection';
+                    mark.textContent = safeText.slice(start, end);
+                    node.appendChild(mark);
+                    if (end < safeText.length) {
+                        node.appendChild(document.createTextNode(safeText.slice(end)));
+                    }
+                    return;
+                }
+
                 if (index > 0) {
                     node.appendChild(document.createTextNode(safeText.slice(0, index)));
                 }
@@ -3121,16 +3139,46 @@
                 return;
             }
             virtualKeyboardCaret = index;
-            renderVirtualTextNode(virtualKeyboardTarget.node, virtualTargetText(), true, virtualKeyboardCaret);
+            renderVirtualTextNode(virtualKeyboardTarget.node, virtualTargetText(), true, virtualKeyboardCaret, virtualKeyboardSelectionAnchor);
         }
 
         function trackVirtualCaretDrag(event) {
             const pointerId = event.pointerId;
-            window.requestAnimationFrame(() => applyVirtualCaretFromPoint(event.clientX, event.clientY));
+            const startX = event.clientX;
+            const startY = event.clientY;
+            const longPressThresholdPx = 8;
+            const longPressDelayMs = 450;
+            let moved = false;
+
+            if (virtualKeyboardSelectionAnchor !== null) {
+                virtualKeyboardSelectionAnchor = null;
+                renderVirtualKeyboard();
+            }
+            window.requestAnimationFrame(() => applyVirtualCaretFromPoint(startX, startY));
+
+            const longPressTimer = window.setTimeout(() => {
+                if (moved) {
+                    return;
+                }
+                virtualKeyboardSelectionAnchor = virtualKeyboardCaret;
+                if (navigator.vibrate) {
+                    navigator.vibrate(10);
+                }
+                applyVirtualCaretFromPoint(startX, startY);
+                renderVirtualKeyboard();
+            }, longPressDelayMs);
 
             const onMove = (moveEvent) => {
                 if (moveEvent.pointerId !== pointerId) {
                     return;
+                }
+                if (!moved) {
+                    const dx = moveEvent.clientX - startX;
+                    const dy = moveEvent.clientY - startY;
+                    if (Math.hypot(dx, dy) > longPressThresholdPx) {
+                        moved = true;
+                        window.clearTimeout(longPressTimer);
+                    }
                 }
                 applyVirtualCaretFromPoint(moveEvent.clientX, moveEvent.clientY);
             };
@@ -3138,6 +3186,7 @@
                 if (upEvent.pointerId !== pointerId) {
                     return;
                 }
+                window.clearTimeout(longPressTimer);
                 window.removeEventListener('pointermove', onMove);
                 window.removeEventListener('pointerup', onUp);
                 window.removeEventListener('pointercancel', onUp);
@@ -3176,7 +3225,7 @@
                 setTableCellText(virtualKeyboardTarget.table, virtualKeyboardTarget.row, virtualKeyboardTarget.col, text);
             }
 
-            renderVirtualTextNode(virtualKeyboardTarget.node, text, true, virtualKeyboardCaret);
+            renderVirtualTextNode(virtualKeyboardTarget.node, text, true, virtualKeyboardCaret, virtualKeyboardSelectionAnchor);
             if (virtualKeyboardTarget.type !== 'chat') {
                 markUnsaved();
             }
@@ -3189,6 +3238,16 @@
             }
 
             const text = virtualTargetText();
+            if (virtualKeyboardSelectionAnchor !== null) {
+                const start = Math.min(virtualKeyboardSelectionAnchor, virtualKeyboardCaret);
+                const end = Math.max(virtualKeyboardSelectionAnchor, virtualKeyboardCaret);
+                virtualKeyboardSelectionAnchor = null;
+                virtualKeyboardCaret = start + value.length;
+                setVirtualTargetText(text.slice(0, start) + value + text.slice(end));
+                renderVirtualKeyboard();
+                return;
+            }
+
             const caret = Math.max(0, Math.min(virtualKeyboardCaret, text.length));
             virtualKeyboardCaret = caret + value.length;
             setVirtualTargetText(text.slice(0, caret) + value + text.slice(caret));
@@ -3292,6 +3351,10 @@
                     button.dataset.key = key;
                     if (key === 'paste') {
                         button.innerHTML = '<svg viewBox="0 0 24 24" aria-hidden="true"><path d="M9 4h6a1 1 0 0 1 1 1v1h1.5A1.5 1.5 0 0 1 19 7.5v12A1.5 1.5 0 0 1 17.5 21h-11A1.5 1.5 0 0 1 5 19.5v-12A1.5 1.5 0 0 1 6.5 6H8V5a1 1 0 0 1 1-1Z" fill="none" stroke="currentColor" stroke-width="1.6" stroke-linecap="round" stroke-linejoin="round"/><path d="M9 4h6v2H9z" fill="currentColor"/></svg>';
+                    } else if (key === 'copy') {
+                        button.innerHTML = '<svg viewBox="0 0 24 24" aria-hidden="true"><rect x="8" y="8" width="12" height="12" rx="1.5" fill="none" stroke="currentColor" stroke-width="1.6"/><path d="M16 8V5.5A1.5 1.5 0 0 0 14.5 4h-9A1.5 1.5 0 0 0 4 5.5v9A1.5 1.5 0 0 0 5.5 16H8" fill="none" stroke="currentColor" stroke-width="1.6" stroke-linecap="round" stroke-linejoin="round"/></svg>';
+                    } else if (key === 'cut') {
+                        button.innerHTML = '<svg viewBox="0 0 24 24" aria-hidden="true"><circle cx="6" cy="6" r="2.4" fill="none" stroke="currentColor" stroke-width="1.6"/><circle cx="6" cy="18" r="2.4" fill="none" stroke="currentColor" stroke-width="1.6"/><path d="M7.8 7.6 19 18M7.8 16.4 19 6" fill="none" stroke="currentColor" stroke-width="1.6" stroke-linecap="round"/></svg>';
                     } else {
                         button.textContent = keyLabel(key);
                     }
@@ -3301,6 +3364,11 @@
                     button.classList.toggle('vk-key-done', key === 'done');
                     button.classList.toggle('vk-key-nav', key === 'left' || key === 'right');
                     button.classList.toggle('vk-key-paste', key === 'paste');
+                    button.classList.toggle('vk-key-clip', key === 'copy' || key === 'cut');
+                    if (key === 'copy' || key === 'cut') {
+                        button.disabled = virtualKeyboardSelectionAnchor === null;
+                        button.classList.toggle('is-disabled', button.disabled);
+                    }
                     row.appendChild(button);
                 }
                 virtualKeyboardKeys.appendChild(row);
@@ -3317,6 +3385,7 @@
                 renderVirtualTextNode(node, virtualTargetText(), false);
             }
             virtualKeyboardTarget = null;
+            virtualKeyboardSelectionAnchor = null;
             virtualKeyboard.classList.remove('is-visible');
             virtualKeyboard.setAttribute('aria-hidden', 'true');
             resetWorkspaceOffset();
@@ -3337,6 +3406,7 @@
             virtualKeyboardLayout = 'letters';
             virtualKeyboardShift = false;
             virtualKeyboardCaret = virtualTargetText().length;
+            virtualKeyboardSelectionAnchor = null;
             renderVirtualKeyboard();
             renderVirtualTextNode(target.node, virtualTargetText(), true, virtualKeyboardCaret);
             virtualKeyboard.classList.add('is-visible');
@@ -3414,20 +3484,55 @@
             const caret = Math.max(0, Math.min(virtualKeyboardCaret, text.length));
 
             if (key === 'left') {
+                const hadSelection = virtualKeyboardSelectionAnchor !== null;
+                virtualKeyboardSelectionAnchor = null;
                 virtualKeyboardCaret = Math.max(0, caret - 1);
                 renderVirtualTextNode(virtualKeyboardTarget.node, text, true, virtualKeyboardCaret);
+                if (hadSelection) {
+                    renderVirtualKeyboard();
+                }
                 return;
             }
             if (key === 'right') {
+                const hadSelection = virtualKeyboardSelectionAnchor !== null;
+                virtualKeyboardSelectionAnchor = null;
                 virtualKeyboardCaret = Math.min(text.length, caret + 1);
                 renderVirtualTextNode(virtualKeyboardTarget.node, text, true, virtualKeyboardCaret);
+                if (hadSelection) {
+                    renderVirtualKeyboard();
+                }
                 return;
             }
             if (key === 'paste') {
                 pasteVirtualKeyboardClipboard();
                 return;
             }
+            if (key === 'copy' || key === 'cut') {
+                if (virtualKeyboardSelectionAnchor === null || !navigator.clipboard || !navigator.clipboard.writeText) {
+                    return;
+                }
+                const start = Math.min(virtualKeyboardSelectionAnchor, caret);
+                const end = Math.max(virtualKeyboardSelectionAnchor, caret);
+                const selectedText = text.slice(start, end);
+                navigator.clipboard.writeText(selectedText).catch(() => {});
+                if (key === 'cut') {
+                    virtualKeyboardSelectionAnchor = null;
+                    virtualKeyboardCaret = start;
+                    setVirtualTargetText(text.slice(0, start) + text.slice(end));
+                    renderVirtualKeyboard();
+                }
+                return;
+            }
             if (key === 'backspace') {
+                if (virtualKeyboardSelectionAnchor !== null) {
+                    const start = Math.min(virtualKeyboardSelectionAnchor, caret);
+                    const end = Math.max(virtualKeyboardSelectionAnchor, caret);
+                    virtualKeyboardSelectionAnchor = null;
+                    virtualKeyboardCaret = start;
+                    setVirtualTargetText(text.slice(0, start) + text.slice(end));
+                    renderVirtualKeyboard();
+                    return;
+                }
                 if (caret === 0) {
                     return;
                 }
@@ -7053,7 +7158,7 @@
                 } else {
                     virtualKeyboardTarget.node = textLayer.querySelector(`[data-table-id="${virtualKeyboardTarget.table.id}"] [data-cell="${cellKey(virtualKeyboardTarget.row, virtualKeyboardTarget.col)}"]`);
                 }
-                renderVirtualTextNode(virtualKeyboardTarget.node, virtualTargetText(), true);
+                renderVirtualTextNode(virtualKeyboardTarget.node, virtualTargetText(), true, virtualKeyboardCaret, virtualKeyboardSelectionAnchor);
                 applyKeyboardAvoidance();
             }
         }

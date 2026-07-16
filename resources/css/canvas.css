@@ -221,6 +221,11 @@ body {
     animation: caretBlink 1s steps(1) infinite;
 }
 
+.virtual-selection {
+    background: rgba(15, 118, 110, 0.28);
+    border-radius: 2px;
+}
+
 @keyframes caretBlink {
     50% {
         opacity: 0;
@@ -486,6 +491,22 @@ body {
 .vk-key-nav {
     background: #adb5c2;
     font-size: 18px;
+}
+
+.vk-key-clip {
+    background: #adb5c2;
+    display: grid;
+    place-items: center;
+}
+
+.vk-key-clip svg {
+    width: 18px;
+    height: 18px;
+}
+
+.vk-key-clip.is-disabled {
+    opacity: 0.45;
+    pointer-events: none;
 }
 
 .vk-key-paste {
