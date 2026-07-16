@@ -699,7 +699,7 @@
                 return null;
             }
 
-            const shapeType = ['line', 'rectangle', 'circle', 'ellipse', 'arrow', 'triangle', 'rhombus', 'pentagon', 'hexagon', 'star', 'parallelogram', 'trapezoid', 'cylinder', 'cone', 'semicircle', 'ring', 'speechBubble'].includes(element.shapeType)
+            const shapeType = ['line', 'rectangle', 'circle', 'ellipse', 'arrow', 'triangle', 'rhombus', 'pentagon', 'hexagon', 'star', 'parallelogram', 'trapezoid', 'cylinder', 'cone', 'semicircle', 'ring', 'speechBubble', 'donutSegment'].includes(element.shapeType)
                 ? element.shapeType
                 : '';
             if (!shapeType) {
@@ -769,6 +769,11 @@
                     return null;
                 }
                 normalized.segments = normalizeSegmentList(element.segments, 1, [{ start: 0, end: 1 }]);
+            }
+
+            if (shapeType === 'donutSegment') {
+                normalized.startAngle = Number.isFinite(Number(element.startAngle)) ? Number(element.startAngle) : 0;
+                normalized.endAngle = Number.isFinite(Number(element.endAngle)) ? Number(element.endAngle) : Math.PI * 2;
             }
 
             return normalized;
@@ -2558,6 +2563,41 @@
             }
         }
 
+        function renderSmartDonutSegment(element, model) {
+            const rect = pageDisplayRect(model);
+            const bounds = element.bounds || {};
+            const boundsWidth = Math.max(1, Number(bounds.width) || 1);
+            const boundsHeight = Math.max(1, Number(bounds.height) || 1);
+            const x = rect.x + (Number(bounds.x) || 0) * rect.scale;
+            const y = rect.y + (Number(bounds.y) || 0) * rect.scale;
+            const width = boundsWidth * rect.scale;
+            const height = boundsHeight * rect.scale;
+            const cx = x + width / 2;
+            const cy = y + height / 2;
+            const outerR = Math.min(width, height) / 2;
+            const thickness = outerR * 0.42;
+            const midR = outerR - thickness / 2;
+            const startAngle = Number(element.startAngle) || 0;
+            const endAngle = Number.isFinite(Number(element.endAngle)) ? Number(element.endAngle) : Math.PI * 2;
+            const rotation = Number(element.rotation) || 0;
+
+            if (rotation) {
+                ctx.save();
+                ctx.translate(cx, cy);
+                ctx.rotate(rotation);
+                ctx.translate(-cx, -cy);
+            }
+
+            ctx.lineWidth = thickness;
+            ctx.beginPath();
+            ctx.arc(cx, cy, midR, startAngle, endAngle);
+            ctx.stroke();
+
+            if (rotation) {
+                ctx.restore();
+            }
+        }
+
         function renderSmartPolygon(element, model) {
             if (!Array.isArray(element.points) || element.points.length < 3) {
                 return;
@@ -2649,6 +2689,8 @@
                 renderSmartRing(element, model);
             } else if (element.shapeType === 'speechBubble') {
                 renderSmartSpeechBubble(element, model);
+            } else if (element.shapeType === 'donutSegment') {
+                renderSmartDonutSegment(element, model);
             }
             ctx.restore();
         }
@@ -6005,7 +6047,7 @@
                     );
                 }
                 bounds = calculateStrokeBounds(points);
-            } else if (element.shapeType === 'rectangle' || element.shapeType === 'cylinder' || element.shapeType === 'cone' || element.shapeType === 'semicircle' || element.shapeType === 'ring' || element.shapeType === 'speechBubble') {
+            } else if (element.shapeType === 'rectangle' || element.shapeType === 'cylinder' || element.shapeType === 'cone' || element.shapeType === 'semicircle' || element.shapeType === 'ring' || element.shapeType === 'speechBubble' || element.shapeType === 'donutSegment') {
                 const source = normalizePageBounds(element.bounds);
                 const rotation = Number(element.rotation) || 0;
                 if (rotation) {
@@ -7914,6 +7956,297 @@
             return element;
         }
 
+        const INFOGRAPHIC_PALETTE = ['#2563eb', '#f4c20d', '#ec4899', '#65c466', '#7c3aed'];
+
+        const INFOGRAPHIC_LIBRARY = [
+            { infographicType: 'barChart', label: 'Bar Chart' },
+            { infographicType: 'columnChart', label: 'Column Chart' },
+            { infographicType: 'donutChart', label: 'Donut Chart' },
+            { infographicType: 'lineChart', label: 'Line Chart' },
+            { infographicType: 'progressRing', label: 'Progress Ring' },
+            { infographicType: 'funnelChart', label: 'Funnel Chart' },
+            { infographicType: 'pyramidChart', label: 'Pyramid Chart' },
+            { infographicType: 'stackedBarChart', label: 'Stacked Bar Chart' }
+        ];
+
+        const INFOGRAPHIC_LIBRARY_ICONS = {
+            barChart: '<svg viewBox="0 0 48 48" aria-hidden="true"><rect x="4" y="7" width="38" height="6" rx="1" fill="none" stroke="currentColor" stroke-width="3"/><rect x="4" y="17" width="27" height="6" rx="1" fill="none" stroke="currentColor" stroke-width="3"/><rect x="4" y="27" width="32" height="6" rx="1" fill="none" stroke="currentColor" stroke-width="3"/><rect x="4" y="37" width="20" height="6" rx="1" fill="none" stroke="currentColor" stroke-width="3"/></svg>',
+            columnChart: '<svg viewBox="0 0 48 48" aria-hidden="true"><rect x="6" y="10" width="7" height="32" fill="none" stroke="currentColor" stroke-width="3"/><rect x="16" y="20" width="7" height="22" fill="none" stroke="currentColor" stroke-width="3"/><rect x="26" y="14" width="7" height="28" fill="none" stroke="currentColor" stroke-width="3"/><rect x="36" y="24" width="7" height="18" fill="none" stroke="currentColor" stroke-width="3"/><path d="M4 42h40" fill="none" stroke="currentColor" stroke-width="3" stroke-linecap="round"/></svg>',
+            donutChart: '<svg viewBox="0 0 48 48" aria-hidden="true"><circle cx="24" cy="24" r="17" fill="none" stroke="currentColor" stroke-width="3"/><circle cx="24" cy="24" r="9" fill="none" stroke="currentColor" stroke-width="3"/><path d="M24 7 24 15M38 31 31 27" fill="none" stroke="currentColor" stroke-width="3" stroke-linecap="round"/></svg>',
+            lineChart: '<svg viewBox="0 0 48 48" aria-hidden="true"><path d="M4 32 14 18 24 28 34 10 44 22" fill="none" stroke="currentColor" stroke-width="3" stroke-linecap="round" stroke-linejoin="round"/><circle cx="4" cy="32" r="2.2" fill="currentColor"/><circle cx="14" cy="18" r="2.2" fill="currentColor"/><circle cx="24" cy="28" r="2.2" fill="currentColor"/><circle cx="34" cy="10" r="2.2" fill="currentColor"/><circle cx="44" cy="22" r="2.2" fill="currentColor"/></svg>',
+            progressRing: '<svg viewBox="0 0 48 48" aria-hidden="true"><circle cx="24" cy="24" r="17" fill="none" stroke="currentColor" stroke-width="3" stroke-dasharray="4 3" opacity="0.35"/><path d="M24 7 A17 17 0 1 1 9.5 33.5" fill="none" stroke="currentColor" stroke-width="4" stroke-linecap="round"/></svg>',
+            funnelChart: '<svg viewBox="0 0 48 48" aria-hidden="true"><path d="M4 8h40l-8 10H12Z" fill="none" stroke="currentColor" stroke-width="3" stroke-linejoin="round"/><path d="M12 18h24l-6 9H18Z" fill="none" stroke="currentColor" stroke-width="3" stroke-linejoin="round"/><path d="M18 27h12l-4 8h-4Z" fill="none" stroke="currentColor" stroke-width="3" stroke-linejoin="round"/></svg>',
+            pyramidChart: '<svg viewBox="0 0 48 48" aria-hidden="true"><path d="M20 6h8l4 8H16Z" fill="none" stroke="currentColor" stroke-width="3" stroke-linejoin="round"/><path d="M16 14h16l4 9H12Z" fill="none" stroke="currentColor" stroke-width="3" stroke-linejoin="round"/><path d="M10 23h28l6 10H4Z" fill="none" stroke="currentColor" stroke-width="3" stroke-linejoin="round"/></svg>',
+            stackedBarChart: '<svg viewBox="0 0 48 48" aria-hidden="true"><rect x="16" y="6" width="16" height="10" fill="none" stroke="currentColor" stroke-width="3"/><rect x="16" y="16" width="16" height="9" fill="none" stroke="currentColor" stroke-width="3"/><rect x="16" y="25" width="16" height="9" fill="none" stroke="currentColor" stroke-width="3"/><rect x="16" y="34" width="16" height="8" fill="none" stroke="currentColor" stroke-width="3"/><path d="M8 42h32" fill="none" stroke="currentColor" stroke-width="3" stroke-linecap="round"/></svg>'
+        };
+
+        const AI_INFOGRAPHIC_TYPES = Array.from(new Set(INFOGRAPHIC_LIBRARY.map((entry) => entry.infographicType)));
+
+        function buildValueLabelDraft(x, y, text, options = {}) {
+            const width = options.width || 60;
+            const height = options.height || 22;
+            return {
+                kind: 'text',
+                bounds: { x: x - width / 2, y: y - height / 2, width, height },
+                text,
+                fontSize: options.fontSize || 14,
+                bold: Boolean(options.bold),
+                align: 'center',
+                color: '#111827'
+            };
+        }
+
+        function buildFunnelDrafts(cx, cy, size, inverted) {
+            const ratios = [1, 0.75, 0.5, 0.28];
+            const orderedRatios = inverted ? [...ratios].reverse() : ratios;
+            const chartWidth = size * 1.4;
+            const chartHeight = size * 1.1;
+            const segmentHeight = chartHeight / orderedRatios.length;
+            const gap = segmentHeight * 0.06;
+            const top = cy - chartHeight / 2;
+            const drafts = [];
+            for (let index = 0; index < orderedRatios.length; index += 1) {
+                const topRatio = orderedRatios[index];
+                const bottomRatio = index + 1 < orderedRatios.length ? orderedRatios[index + 1] : orderedRatios[index] * 0.6;
+                const topWidth = chartWidth * topRatio;
+                const bottomWidth = chartWidth * bottomRatio;
+                const y0 = top + index * segmentHeight;
+                const y1 = y0 + segmentHeight - gap;
+                drafts.push({
+                    shapeType: 'trapezoid',
+                    points: [
+                        { x: cx - topWidth / 2, y: y0 },
+                        { x: cx + topWidth / 2, y: y0 },
+                        { x: cx + bottomWidth / 2, y: y1 },
+                        { x: cx - bottomWidth / 2, y: y1 }
+                    ],
+                    style: { color: INFOGRAPHIC_PALETTE[index % INFOGRAPHIC_PALETTE.length] }
+                });
+                drafts.push(buildValueLabelDraft(cx, (y0 + y1) / 2, `${Math.round(topRatio * 100)}%`, { fontSize: 13 }));
+            }
+            return drafts;
+        }
+
+        function buildLibraryCompositeDrafts(entry, model) {
+            const cx = model.baseWidth / 2;
+            const cy = model.baseHeight / 2;
+            const size = Math.max(24, Math.min(160, model.baseWidth * 0.4, model.baseHeight * 0.4));
+
+            if (entry.infographicType === 'columnChart') {
+                const heightRatios = [1, 0.7, 0.85, 0.5];
+                const chartWidth = size * 1.4;
+                const chartHeight = size;
+                const barGap = chartWidth * 0.08;
+                const barWidth = (chartWidth - barGap * (heightRatios.length - 1)) / heightRatios.length;
+                const baseY = cy + chartHeight / 2;
+                const left = cx - chartWidth / 2;
+                const drafts = [];
+                heightRatios.forEach((ratio, index) => {
+                    const barHeight = chartHeight * ratio;
+                    const x = left + index * (barWidth + barGap);
+                    drafts.push({
+                        shapeType: 'rectangle',
+                        bounds: { x, y: baseY - barHeight, width: barWidth, height: barHeight },
+                        style: { color: INFOGRAPHIC_PALETTE[index % INFOGRAPHIC_PALETTE.length] }
+                    });
+                    drafts.push(buildValueLabelDraft(x + barWidth / 2, baseY - barHeight - 14, `${Math.round(ratio * 100)}%`, { fontSize: 13, width: barWidth + 16 }));
+                });
+                drafts.push({
+                    shapeType: 'line',
+                    from: { x: left - barGap * 0.5, y: baseY },
+                    to: { x: left + chartWidth + barGap * 0.5, y: baseY }
+                });
+                return drafts;
+            }
+
+            if (entry.infographicType === 'barChart') {
+                const widthRatios = [1, 0.7, 0.85, 0.5];
+                const chartWidth = size * 1.4;
+                const chartHeight = size;
+                const barGap = chartHeight * 0.12;
+                const barHeight = (chartHeight - barGap * (widthRatios.length - 1)) / widthRatios.length;
+                const top = cy - chartHeight / 2;
+                const left = cx - chartWidth / 2;
+                const drafts = [];
+                widthRatios.forEach((ratio, index) => {
+                    const barWidth = chartWidth * ratio;
+                    const y = top + index * (barHeight + barGap);
+                    drafts.push({
+                        shapeType: 'rectangle',
+                        bounds: { x: left, y, width: barWidth, height: barHeight },
+                        style: { color: INFOGRAPHIC_PALETTE[index % INFOGRAPHIC_PALETTE.length] }
+                    });
+                    drafts.push(buildValueLabelDraft(left + barWidth + 26, y + barHeight / 2, `${Math.round(ratio * 100)}%`, { fontSize: 13, width: 50 }));
+                });
+                drafts.push({
+                    shapeType: 'line',
+                    from: { x: left, y: top - barGap * 0.5 },
+                    to: { x: left, y: top + chartHeight + barGap * 0.5 }
+                });
+                return drafts;
+            }
+
+            if (entry.infographicType === 'donutChart') {
+                const proportions = [0.4, 0.25, 0.2, 0.15];
+                const diameter = size * 1.1;
+                const outerR = diameter / 2;
+                const bounds = { x: cx - diameter / 2, y: cy - diameter / 2, width: diameter, height: diameter };
+                let angle = -Math.PI / 2;
+                const drafts = [];
+                proportions.forEach((proportion, index) => {
+                    const sweep = proportion * Math.PI * 2;
+                    drafts.push({
+                        shapeType: 'donutSegment',
+                        bounds: { ...bounds },
+                        startAngle: angle,
+                        endAngle: angle + sweep,
+                        style: { color: INFOGRAPHIC_PALETTE[index % INFOGRAPHIC_PALETTE.length] }
+                    });
+                    const midAngle = angle + sweep / 2;
+                    const labelR = outerR * 1.28;
+                    drafts.push(buildValueLabelDraft(
+                        cx + Math.cos(midAngle) * labelR,
+                        cy + Math.sin(midAngle) * labelR,
+                        `${Math.round(proportion * 100)}%`,
+                        { fontSize: 13 }
+                    ));
+                    angle += sweep;
+                });
+                return drafts;
+            }
+
+            if (entry.infographicType === 'progressRing') {
+                const percent = 0.65;
+                const diameter = size * 1.1;
+                const bounds = { x: cx - diameter / 2, y: cy - diameter / 2, width: diameter, height: diameter };
+                const startAngle = -Math.PI / 2;
+                const sweep = percent * Math.PI * 2;
+                return [
+                    {
+                        shapeType: 'donutSegment',
+                        bounds: { ...bounds },
+                        startAngle,
+                        endAngle: startAngle + sweep,
+                        style: { color: INFOGRAPHIC_PALETTE[0] }
+                    },
+                    {
+                        shapeType: 'donutSegment',
+                        bounds: { ...bounds },
+                        startAngle: startAngle + sweep,
+                        endAngle: startAngle + Math.PI * 2,
+                        style: { color: '#d1d5db' }
+                    },
+                    buildValueLabelDraft(cx, cy, `${Math.round(percent * 100)}%`, {
+                        width: diameter * 0.6,
+                        height: size * 0.3,
+                        fontSize: Math.max(16, Math.round(size * 0.22)),
+                        bold: true
+                    })
+                ];
+            }
+
+            if (entry.infographicType === 'lineChart') {
+                const points = [0.3, 0.7, 0.45, 0.85, 0.55];
+                const chartWidth = size * 1.5;
+                const chartHeight = size;
+                const baseY = cy + chartHeight / 2;
+                const left = cx - chartWidth / 2;
+                const stepX = chartWidth / (points.length - 1);
+                const color = INFOGRAPHIC_PALETTE[0];
+                const markerR = Math.max(3, size * 0.035);
+                const coords = points.map((ratio, index) => ({
+                    x: left + stepX * index,
+                    y: baseY - chartHeight * ratio
+                }));
+                const drafts = [];
+                for (let index = 0; index < coords.length - 1; index += 1) {
+                    drafts.push({
+                        shapeType: 'line',
+                        from: coords[index],
+                        to: coords[index + 1],
+                        style: { color }
+                    });
+                }
+                coords.forEach((point) => {
+                    drafts.push({
+                        shapeType: 'circle',
+                        bounds: { x: point.x - markerR, y: point.y - markerR, width: markerR * 2, height: markerR * 2 },
+                        style: { color }
+                    });
+                });
+                drafts.push({
+                    shapeType: 'line',
+                    from: { x: left, y: baseY },
+                    to: { x: left + chartWidth, y: baseY }
+                });
+                return drafts;
+            }
+
+            if (entry.infographicType === 'funnelChart') {
+                return buildFunnelDrafts(cx, cy, size, false);
+            }
+
+            if (entry.infographicType === 'pyramidChart') {
+                return buildFunnelDrafts(cx, cy, size, true);
+            }
+
+            if (entry.infographicType === 'stackedBarChart') {
+                const proportions = [0.35, 0.25, 0.2, 0.2];
+                const barWidth = size * 0.55;
+                const chartHeight = size * 1.2;
+                const baseY = cy + chartHeight / 2;
+                const left = cx - barWidth / 2;
+                let cursorY = baseY;
+                const drafts = [];
+                proportions.forEach((proportion, index) => {
+                    const segmentHeight = chartHeight * proportion;
+                    drafts.push({
+                        shapeType: 'rectangle',
+                        bounds: { x: left, y: cursorY - segmentHeight, width: barWidth, height: segmentHeight },
+                        style: { color: INFOGRAPHIC_PALETTE[index % INFOGRAPHIC_PALETTE.length] }
+                    });
+                    cursorY -= segmentHeight;
+                });
+                drafts.push({
+                    shapeType: 'line',
+                    from: { x: left - barWidth * 0.3, y: baseY },
+                    to: { x: left + barWidth * 1.3, y: baseY }
+                });
+                return drafts;
+            }
+
+            return [];
+        }
+
+        function insertLibraryComposite(entry) {
+            const model = currentPageModel();
+            const drafts = buildLibraryCompositeDrafts(entry, model);
+            const elements = drafts
+                .map((draft) => {
+                    if (draft.kind !== 'text') {
+                        return normalizeSmartShapeElement(draft);
+                    }
+                    const { kind, ...textDraft } = draft;
+                    return normalizeTextElement(textDraft);
+                })
+                .filter(Boolean);
+            if (elements.length === 0) {
+                return null;
+            }
+
+            for (const element of elements) {
+                model.elements.push(element);
+            }
+            clearRedoForCurrentPage();
+            markUnsaved();
+            updateUndoButton();
+            closeSlidePanel();
+            renderTextLayer();
+            renderCurrentPage().catch((error) => console.error(error));
+            scheduleSessionSave();
+            return elements;
+        }
+
         async function renderPdfPageForImport(pdfDoc, pageIndex) {
             const page = await pdfDoc.getPage(pageIndex + 1);
             const baseViewport = page.getViewport({ scale: 1 });
@@ -9374,6 +9707,15 @@
                 }
                 return Boolean(element);
             }
+            if (elementType === 'infographic') {
+                const entry = INFOGRAPHIC_LIBRARY.find((s) => s.infographicType === params.infographicType)
+                    || INFOGRAPHIC_LIBRARY.find((s) => s.infographicType === 'barChart');
+                // Infographics use a preset multi-color palette across their pieces, so a single
+                // params.color override is intentionally not applied here (it would flatten the
+                // chart to one color and defeat the point of the palette).
+                const elements = insertLibraryComposite(entry);
+                return Boolean(elements && elements.length);
+            }
             return false;
         }
 
@@ -9452,7 +9794,7 @@
                 selectedTextId,
                 selectedTableId
             ].filter(Boolean)));
-            const requestBody = { action: 'chat', message: outgoingMessage, catalog, shapeTypes: AI_SHAPE_TYPES };
+            const requestBody = { action: 'chat', message: outgoingMessage, catalog, shapeTypes: AI_SHAPE_TYPES, infographicTypes: AI_INFOGRAPHIC_TYPES };
             if (slashCommand) {
                 requestBody.slashCommand = slashCommand;
             }
@@ -10760,6 +11102,19 @@ return { ok: false, message: (err && err.message) || 'Network error while readin
             });
         }
 
+        function renderLibraryInfographicsTab(container) {
+            container.innerHTML = '<div class="library-shape-grid"></div>';
+            const grid = container.querySelector('.library-shape-grid');
+            INFOGRAPHIC_LIBRARY.forEach((entry) => {
+                const item = document.createElement('button');
+                item.type = 'button';
+                item.className = 'library-shape-item';
+                item.innerHTML = '<span class="library-shape-icon">' + INFOGRAPHIC_LIBRARY_ICONS[entry.infographicType] + '</span><span class="library-shape-label">' + escapeHtml(entry.label) + '</span>';
+                item.addEventListener('click', () => insertLibraryComposite(entry));
+                grid.appendChild(item);
+            });
+        }
+
         async function fetchPdfLibraryEntries() {
             try {
                 const data = await fetchAllLegacyPages('list_pdfs', 'items');
@@ -11711,7 +12066,7 @@ return { ok: false, message: (err && err.message) || 'Network error while readin
             } else if (tabId === 'pdfs') {
                 renderLibraryPdfsTab(container);
             } else {
-                renderLibraryPlaceholderTab(container, 'Infographics');
+                renderLibraryInfographicsTab(container);
             }
         }
 
