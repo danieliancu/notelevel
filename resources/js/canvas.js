@@ -684,12 +684,22 @@
             };
         }
 
+        const REQUIRED_POLYGON_POINTS = {
+            triangle: 3,
+            rhombus: 4,
+            parallelogram: 4,
+            trapezoid: 4,
+            pentagon: 5,
+            hexagon: 6,
+            star: 10
+        };
+
         function normalizeSmartShapeElement(element) {
             if (!element || typeof element !== 'object') {
                 return null;
             }
 
-            const shapeType = ['line', 'rectangle', 'circle', 'ellipse', 'arrow', 'triangle', 'rhombus'].includes(element.shapeType)
+            const shapeType = ['line', 'rectangle', 'circle', 'ellipse', 'arrow', 'triangle', 'rhombus', 'pentagon', 'hexagon', 'star', 'parallelogram', 'trapezoid', 'cylinder', 'cone', 'semicircle', 'ring', 'speechBubble'].includes(element.shapeType)
                 ? element.shapeType
                 : '';
             if (!shapeType) {
@@ -746,8 +756,8 @@
                 normalized.arcs = normalizeSegmentList(element.arcs, Math.PI * 2, [{ start: 0, end: Math.PI * 2 }]);
             }
 
-            if (shapeType === 'triangle' || shapeType === 'rhombus') {
-                const requiredPoints = shapeType === 'triangle' ? 3 : 4;
+            if (Object.prototype.hasOwnProperty.call(REQUIRED_POLYGON_POINTS, shapeType)) {
+                const requiredPoints = REQUIRED_POLYGON_POINTS[shapeType];
                 const sourcePoints = Array.isArray(element.points) ? element.points : [];
                 const points = sourcePoints
                     .map((point) => normalizePagePoint(point))
@@ -2364,6 +2374,190 @@
             }
         }
 
+        function curvedShapeCapRadius(width, height) {
+            return Math.max(4, Math.min(height * 0.18, width * 0.3));
+        }
+
+        function renderSmartCylinder(element, model) {
+            const rect = pageDisplayRect(model);
+            const bounds = element.bounds || {};
+            const boundsWidth = Math.max(1, Number(bounds.width) || 1);
+            const boundsHeight = Math.max(1, Number(bounds.height) || 1);
+            const x = rect.x + (Number(bounds.x) || 0) * rect.scale;
+            const y = rect.y + (Number(bounds.y) || 0) * rect.scale;
+            const width = boundsWidth * rect.scale;
+            const height = boundsHeight * rect.scale;
+            const rx = width / 2;
+            const ry = curvedShapeCapRadius(width, height);
+            const cx = x + rx;
+            const topY = y + ry;
+            const bottomY = y + height - ry;
+            const rotation = Number(element.rotation) || 0;
+
+            if (rotation) {
+                ctx.save();
+                ctx.translate(x + width / 2, y + height / 2);
+                ctx.rotate(rotation);
+                ctx.translate(-(x + width / 2), -(y + height / 2));
+            }
+
+            ctx.beginPath();
+            ctx.ellipse(cx, topY, rx, ry, 0, 0, Math.PI * 2);
+            ctx.stroke();
+
+            ctx.beginPath();
+            ctx.moveTo(x, topY);
+            ctx.lineTo(x, bottomY);
+            ctx.ellipse(cx, bottomY, rx, ry, 0, Math.PI, 0, true);
+            ctx.lineTo(x + width, topY);
+            ctx.stroke();
+
+            if (rotation) {
+                ctx.restore();
+            }
+        }
+
+        function renderSmartCone(element, model) {
+            const rect = pageDisplayRect(model);
+            const bounds = element.bounds || {};
+            const boundsWidth = Math.max(1, Number(bounds.width) || 1);
+            const boundsHeight = Math.max(1, Number(bounds.height) || 1);
+            const x = rect.x + (Number(bounds.x) || 0) * rect.scale;
+            const y = rect.y + (Number(bounds.y) || 0) * rect.scale;
+            const width = boundsWidth * rect.scale;
+            const height = boundsHeight * rect.scale;
+            const rx = width / 2;
+            const ry = curvedShapeCapRadius(width, height);
+            const cx = x + rx;
+            const baseY = y + height - ry;
+            const rotation = Number(element.rotation) || 0;
+
+            if (rotation) {
+                ctx.save();
+                ctx.translate(x + width / 2, y + height / 2);
+                ctx.rotate(rotation);
+                ctx.translate(-(x + width / 2), -(y + height / 2));
+            }
+
+            ctx.beginPath();
+            ctx.moveTo(cx, y);
+            ctx.lineTo(x, baseY);
+            ctx.ellipse(cx, baseY, rx, ry, 0, Math.PI, 0, true);
+            ctx.lineTo(cx, y);
+            ctx.stroke();
+
+            if (rotation) {
+                ctx.restore();
+            }
+        }
+
+        function renderSmartSemicircle(element, model) {
+            const rect = pageDisplayRect(model);
+            const bounds = element.bounds || {};
+            const boundsWidth = Math.max(1, Number(bounds.width) || 1);
+            const boundsHeight = Math.max(1, Number(bounds.height) || 1);
+            const x = rect.x + (Number(bounds.x) || 0) * rect.scale;
+            const y = rect.y + (Number(bounds.y) || 0) * rect.scale;
+            const width = boundsWidth * rect.scale;
+            const height = boundsHeight * rect.scale;
+            const r = width / 2;
+            const cx = x + r;
+            const baseY = y + height;
+            const rotation = Number(element.rotation) || 0;
+
+            if (rotation) {
+                ctx.save();
+                ctx.translate(x + width / 2, y + height / 2);
+                ctx.rotate(rotation);
+                ctx.translate(-(x + width / 2), -(y + height / 2));
+            }
+
+            ctx.beginPath();
+            ctx.moveTo(x, baseY);
+            ctx.arc(cx, baseY, r, Math.PI, Math.PI * 2, false);
+            ctx.closePath();
+            ctx.stroke();
+
+            if (rotation) {
+                ctx.restore();
+            }
+        }
+
+        function renderSmartRing(element, model) {
+            const rect = pageDisplayRect(model);
+            const bounds = element.bounds || {};
+            const boundsWidth = Math.max(1, Number(bounds.width) || 1);
+            const boundsHeight = Math.max(1, Number(bounds.height) || 1);
+            const x = rect.x + (Number(bounds.x) || 0) * rect.scale;
+            const y = rect.y + (Number(bounds.y) || 0) * rect.scale;
+            const width = boundsWidth * rect.scale;
+            const height = boundsHeight * rect.scale;
+            const cx = x + width / 2;
+            const cy = y + height / 2;
+            const outerRx = width / 2;
+            const outerRy = height / 2;
+            const innerRatio = 0.55;
+            const rotation = Number(element.rotation) || 0;
+
+            if (rotation) {
+                ctx.save();
+                ctx.translate(cx, cy);
+                ctx.rotate(rotation);
+                ctx.translate(-cx, -cy);
+            }
+
+            ctx.beginPath();
+            ctx.ellipse(cx, cy, outerRx, outerRy, 0, 0, Math.PI * 2);
+            ctx.stroke();
+
+            ctx.beginPath();
+            ctx.ellipse(cx, cy, outerRx * innerRatio, outerRy * innerRatio, 0, 0, Math.PI * 2);
+            ctx.stroke();
+
+            if (rotation) {
+                ctx.restore();
+            }
+        }
+
+        function renderSmartSpeechBubble(element, model) {
+            const rect = pageDisplayRect(model);
+            const bounds = element.bounds || {};
+            const boundsWidth = Math.max(1, Number(bounds.width) || 1);
+            const boundsHeight = Math.max(1, Number(bounds.height) || 1);
+            const x = rect.x + (Number(bounds.x) || 0) * rect.scale;
+            const y = rect.y + (Number(bounds.y) || 0) * rect.scale;
+            const width = boundsWidth * rect.scale;
+            const height = boundsHeight * rect.scale;
+            const bodyHeight = height / 1.22;
+            const cornerRadius = Math.min(16 * rect.scale, bodyHeight * 0.25);
+            const rotation = Number(element.rotation) || 0;
+
+            if (rotation) {
+                ctx.save();
+                ctx.translate(x + width / 2, y + height / 2);
+                ctx.rotate(rotation);
+                ctx.translate(-(x + width / 2), -(y + height / 2));
+            }
+
+            drawRoundedRect(ctx, x, y, width, bodyHeight, cornerRadius);
+            ctx.stroke();
+
+            const tailBaseX1 = x + width * 0.18;
+            const tailBaseX2 = x + width * 0.34;
+            const tailTipX = x + width * 0.12;
+            const bottomY = y + bodyHeight;
+
+            ctx.beginPath();
+            ctx.moveTo(tailBaseX1, bottomY);
+            ctx.lineTo(tailTipX, y + height);
+            ctx.lineTo(tailBaseX2, bottomY);
+            ctx.stroke();
+
+            if (rotation) {
+                ctx.restore();
+            }
+        }
+
         function renderSmartPolygon(element, model) {
             if (!Array.isArray(element.points) || element.points.length < 3) {
                 return;
@@ -2441,10 +2635,20 @@
                 renderSmartRectangle(element, model);
             } else if (element.shapeType === 'circle' || element.shapeType === 'ellipse') {
                 renderSmartEllipse(element, model);
-            } else if (element.shapeType === 'triangle' || element.shapeType === 'rhombus') {
+            } else if (Object.prototype.hasOwnProperty.call(REQUIRED_POLYGON_POINTS, element.shapeType)) {
                 renderSmartPolygon(element, model);
             } else if (element.shapeType === 'arrow') {
                 renderSmartArrow(element, model);
+            } else if (element.shapeType === 'cylinder') {
+                renderSmartCylinder(element, model);
+            } else if (element.shapeType === 'cone') {
+                renderSmartCone(element, model);
+            } else if (element.shapeType === 'semicircle') {
+                renderSmartSemicircle(element, model);
+            } else if (element.shapeType === 'ring') {
+                renderSmartRing(element, model);
+            } else if (element.shapeType === 'speechBubble') {
+                renderSmartSpeechBubble(element, model);
             }
             ctx.restore();
         }
@@ -5801,7 +6005,7 @@
                     );
                 }
                 bounds = calculateStrokeBounds(points);
-            } else if (element.shapeType === 'rectangle') {
+            } else if (element.shapeType === 'rectangle' || element.shapeType === 'cylinder' || element.shapeType === 'cone' || element.shapeType === 'semicircle' || element.shapeType === 'ring' || element.shapeType === 'speechBubble') {
                 const source = normalizePageBounds(element.bounds);
                 const rotation = Number(element.rotation) || 0;
                 if (rotation) {
@@ -7489,8 +7693,20 @@
             { shapeType: 'circle', label: 'Circle' },
             { shapeType: 'ellipse', label: 'Ellipse' },
             { shapeType: 'triangle', label: 'Triangle' },
-            { shapeType: 'rhombus', label: 'Rhombus' }
+            { shapeType: 'rhombus', label: 'Rhombus' },
+            { shapeType: 'pentagon', label: 'Pentagon' },
+            { shapeType: 'hexagon', label: 'Hexagon' },
+            { shapeType: 'star', label: 'Star' },
+            { shapeType: 'parallelogram', label: 'Parallelogram' },
+            { shapeType: 'trapezoid', label: 'Trapezoid' },
+            { shapeType: 'cylinder', label: 'Cylinder' },
+            { shapeType: 'cone', label: 'Cone' },
+            { shapeType: 'semicircle', label: 'Semicircle' },
+            { shapeType: 'ring', label: 'Ring' },
+            { shapeType: 'speechBubble', label: 'Speech Bubble' }
         ];
+
+        const AI_SHAPE_TYPES = Array.from(new Set(SHAPE_LIBRARY.map((entry) => entry.shapeType)));
 
         const SHAPE_LIBRARY_ICONS = {
             line: '<svg viewBox="0 0 48 48" aria-hidden="true"><path d="M8 40 40 8" fill="none" stroke="currentColor" stroke-width="3" stroke-linecap="round"/></svg>',
@@ -7500,11 +7716,41 @@
             circle: '<svg viewBox="0 0 48 48" aria-hidden="true"><circle cx="24" cy="24" r="16" fill="none" stroke="currentColor" stroke-width="3"/></svg>',
             ellipse: '<svg viewBox="0 0 48 48" aria-hidden="true"><ellipse cx="24" cy="24" rx="18" ry="12" fill="none" stroke="currentColor" stroke-width="3"/></svg>',
             triangle: '<svg viewBox="0 0 48 48" aria-hidden="true"><path d="M24 8 41 38H7Z" fill="none" stroke="currentColor" stroke-width="3" stroke-linejoin="round"/></svg>',
-            rhombus: '<svg viewBox="0 0 48 48" aria-hidden="true"><path d="M24 7 41 24 24 41 7 24Z" fill="none" stroke="currentColor" stroke-width="3" stroke-linejoin="round"/></svg>'
+            rhombus: '<svg viewBox="0 0 48 48" aria-hidden="true"><path d="M24 7 41 24 24 41 7 24Z" fill="none" stroke="currentColor" stroke-width="3" stroke-linejoin="round"/></svg>',
+            pentagon: '<svg viewBox="0 0 48 48" aria-hidden="true"><path d="M24 7 40 19 34 38 14 38 8 19Z" fill="none" stroke="currentColor" stroke-width="3" stroke-linejoin="round"/></svg>',
+            hexagon: '<svg viewBox="0 0 48 48" aria-hidden="true"><path d="M41 24 33 39 16 39 7 24 16 9 33 9Z" fill="none" stroke="currentColor" stroke-width="3" stroke-linejoin="round"/></svg>',
+            star: '<svg viewBox="0 0 48 48" aria-hidden="true"><path d="M24 6 29 18 41 18 32 26 35 39 24 32 13 39 16 26 7 18 19 18Z" fill="none" stroke="currentColor" stroke-width="3" stroke-linejoin="round"/></svg>',
+            parallelogram: '<svg viewBox="0 0 48 48" aria-hidden="true"><path d="M15 13 41 13 33 35 7 35Z" fill="none" stroke="currentColor" stroke-width="3" stroke-linejoin="round"/></svg>',
+            trapezoid: '<svg viewBox="0 0 48 48" aria-hidden="true"><path d="M15 13 33 13 41 35 7 35Z" fill="none" stroke="currentColor" stroke-width="3" stroke-linejoin="round"/></svg>',
+            cylinder: '<svg viewBox="0 0 48 48" aria-hidden="true"><ellipse cx="24" cy="13" rx="14" ry="5" fill="none" stroke="currentColor" stroke-width="3"/><path d="M10 13 L10 33 A14 5 0 0 0 38 33 L38 13" fill="none" stroke="currentColor" stroke-width="3" stroke-linecap="round" stroke-linejoin="round"/></svg>',
+            cone: '<svg viewBox="0 0 48 48" aria-hidden="true"><path d="M24 8 L10 33 A14 5 0 0 0 38 33 Z" fill="none" stroke="currentColor" stroke-width="3" stroke-linecap="round" stroke-linejoin="round"/></svg>',
+            semicircle: '<svg viewBox="0 0 48 48" aria-hidden="true"><path d="M7 33 A17 17 0 0 1 41 33 Z" fill="none" stroke="currentColor" stroke-width="3" stroke-linejoin="round"/></svg>',
+            ring: '<svg viewBox="0 0 48 48" aria-hidden="true"><circle cx="24" cy="24" r="17" fill="none" stroke="currentColor" stroke-width="3"/><circle cx="24" cy="24" r="9" fill="none" stroke="currentColor" stroke-width="3"/></svg>',
+            speechBubble: '<svg viewBox="0 0 48 48" aria-hidden="true"><rect x="7" y="8" width="34" height="24" rx="6" fill="none" stroke="currentColor" stroke-width="3"/><path d="M15 32 11 40 21 32" fill="none" stroke="currentColor" stroke-width="3" stroke-linecap="round" stroke-linejoin="round"/></svg>'
         };
 
         function shapeLibraryIconKey(entry) {
             return entry.square ? 'square' : entry.shapeType;
+        }
+
+        function regularPolygonPoints(cx, cy, radius, sides, rotationOffset = -Math.PI / 2) {
+            const points = [];
+            for (let i = 0; i < sides; i += 1) {
+                const angle = rotationOffset + i * (2 * Math.PI / sides);
+                points.push({ x: cx + radius * Math.cos(angle), y: cy + radius * Math.sin(angle) });
+            }
+            return points;
+        }
+
+        function starPoints(cx, cy, outerRadius, innerRadius, spikes, rotationOffset = -Math.PI / 2) {
+            const points = [];
+            const step = Math.PI / spikes;
+            for (let i = 0; i < spikes * 2; i += 1) {
+                const radius = i % 2 === 0 ? outerRadius : innerRadius;
+                const angle = rotationOffset + i * step;
+                points.push({ x: cx + radius * Math.cos(angle), y: cy + radius * Math.sin(angle) });
+            }
+            return points;
         }
 
         function buildLibraryShapeDraft(entry, model) {
@@ -7559,6 +7805,91 @@
                         { x: cx, y: cy + half },
                         { x: cx - half, y: cy }
                     ]
+                };
+            }
+
+            if (entry.shapeType === 'pentagon') {
+                return {
+                    shapeType: 'pentagon',
+                    points: regularPolygonPoints(cx, cy, half, 5)
+                };
+            }
+
+            if (entry.shapeType === 'hexagon') {
+                return {
+                    shapeType: 'hexagon',
+                    points: regularPolygonPoints(cx, cy, half, 6, 0)
+                };
+            }
+
+            if (entry.shapeType === 'star') {
+                return {
+                    shapeType: 'star',
+                    points: starPoints(cx, cy, half, half * 0.45, 5)
+                };
+            }
+
+            if (entry.shapeType === 'parallelogram') {
+                const width = size * 1.4;
+                const height = size;
+                const skew = width * 0.25;
+                return {
+                    shapeType: 'parallelogram',
+                    points: [
+                        { x: cx - width / 2 + skew, y: cy - height / 2 },
+                        { x: cx + width / 2, y: cy - height / 2 },
+                        { x: cx + width / 2 - skew, y: cy + height / 2 },
+                        { x: cx - width / 2, y: cy + height / 2 }
+                    ]
+                };
+            }
+
+            if (entry.shapeType === 'trapezoid') {
+                const width = size * 1.4;
+                const height = size;
+                const topInset = width * 0.25;
+                return {
+                    shapeType: 'trapezoid',
+                    points: [
+                        { x: cx - width / 2 + topInset, y: cy - height / 2 },
+                        { x: cx + width / 2 - topInset, y: cy - height / 2 },
+                        { x: cx + width / 2, y: cy + height / 2 },
+                        { x: cx - width / 2, y: cy + height / 2 }
+                    ]
+                };
+            }
+
+            if (entry.shapeType === 'cylinder' || entry.shapeType === 'cone') {
+                const width = size;
+                const height = size * 1.2;
+                return {
+                    shapeType: entry.shapeType,
+                    bounds: { x: cx - width / 2, y: cy - height / 2, width, height }
+                };
+            }
+
+            if (entry.shapeType === 'semicircle') {
+                const width = size;
+                const height = size / 2;
+                return {
+                    shapeType: 'semicircle',
+                    bounds: { x: cx - width / 2, y: cy - height / 2, width, height }
+                };
+            }
+
+            if (entry.shapeType === 'ring') {
+                return {
+                    shapeType: 'ring',
+                    bounds: { x: cx - size / 2, y: cy - size / 2, width: size, height: size }
+                };
+            }
+
+            if (entry.shapeType === 'speechBubble') {
+                const width = size * 1.3;
+                const height = size * 1.1;
+                return {
+                    shapeType: 'speechBubble',
+                    bounds: { x: cx - width / 2, y: cy - height / 2, width, height }
                 };
             }
 
@@ -9121,7 +9452,7 @@
                 selectedTextId,
                 selectedTableId
             ].filter(Boolean)));
-            const requestBody = { action: 'chat', message: outgoingMessage, catalog };
+            const requestBody = { action: 'chat', message: outgoingMessage, catalog, shapeTypes: AI_SHAPE_TYPES };
             if (slashCommand) {
                 requestBody.slashCommand = slashCommand;
             }
