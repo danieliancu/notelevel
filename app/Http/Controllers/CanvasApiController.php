@@ -12,6 +12,7 @@ use App\Services\DocumentManager;
 use App\Services\PdfPageImportReconciler;
 use App\Services\PlanQuotaService;
 use App\Services\TenantStorageTransaction;
+use App\Support\DocumentPayloadRules;
 use App\Support\NameSanitizer;
 use Illuminate\Http\JsonResponse;
 use Illuminate\Http\Request;
@@ -19,6 +20,7 @@ use Illuminate\Http\Response;
 use Illuminate\Http\UploadedFile;
 use Illuminate\Support\Facades\DB;
 use Illuminate\Support\Facades\Storage;
+use Illuminate\Support\Facades\Validator;
 use Illuminate\Validation\ValidationException;
 use Symfony\Component\HttpFoundation\StreamedResponse;
 use Throwable;
@@ -193,6 +195,18 @@ class CanvasApiController extends Controller
         $documentJson = (string) $request->input('document', '');
         $documentData = $documentJson !== '' ? json_decode($documentJson, true) : null;
 
+        // Same bounds as the REST DocumentController surface (AUDIT.md VAL-01 /
+        // API-01): `document`/`content` arrives here as a hand-decoded JSON
+        // string rather than a native request field, so it can't go through
+        // $request->validate() directly.
+        $contentValidator = Validator::make(
+            ['content' => $documentData],
+            ['content' => DocumentPayloadRules::content()],
+        );
+        if ($contentValidator->fails()) {
+            return response()->json(['ok' => false, 'error' => $contentValidator->errors()->first('content')], 422);
+        }
+
         $existing = Document::where('title', $title)->where('folder_id', $folderId)->first();
         if ($existing && ! $overwrite) {
             return response()->json([
@@ -208,6 +222,9 @@ class CanvasApiController extends Controller
             $number = (int) ($page['page'] ?? 0);
             $image = (string) ($page['image'] ?? '');
             if ($number < 1 || ! preg_match('/^data:image\/jpeg;base64,/', $image)) {
+                continue;
+            }
+            if (strlen($image) > DocumentPayloadRules::MAX_PAGE_IMAGE_BASE64_LENGTH) {
                 continue;
             }
             $binary = base64_decode(substr($image, strpos($image, ',') + 1), true);

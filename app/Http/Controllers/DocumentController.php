@@ -8,6 +8,7 @@ use App\Services\DocumentManager;
 use App\Services\PdfPageImportReconciler;
 use App\Services\PlanQuotaService;
 use App\Services\TenantStorageTransaction;
+use App\Support\DocumentPayloadRules;
 use App\Support\NameSanitizer;
 use Illuminate\Database\QueryException;
 use Illuminate\Http\JsonResponse;
@@ -34,6 +35,13 @@ class DocumentController extends Controller
 
     public function store(Request $request)
     {
+        $request->validate([
+            'content' => DocumentPayloadRules::content(),
+            'page_count' => DocumentPayloadRules::pageCount(),
+            'guideMode' => DocumentPayloadRules::guideModeRest(),
+            'pageBackgroundColor' => DocumentPayloadRules::pageBackgroundColor(),
+        ]);
+
         $title = NameSanitizer::name((string) $request->input('title', ''), 'untitled');
         $folderId = $this->resolveFolderId($request->input('folder_id'));
 
@@ -125,6 +133,13 @@ class DocumentController extends Controller
 
     public function update(Request $request, Document $document)
     {
+        $request->validate([
+            'content' => DocumentPayloadRules::content(),
+            'page_count' => DocumentPayloadRules::pageCount(),
+            'guideMode' => DocumentPayloadRules::guideModeRest(),
+            'pageBackgroundColor' => DocumentPayloadRules::pageBackgroundColor(),
+        ]);
+
         $content = $request->input('content', $document->content);
 
         $document->update([
@@ -175,10 +190,10 @@ class DocumentController extends Controller
         $request->validate([
             'request_id' => ['required', 'uuid'],
             'version' => ['required', 'integer', 'min:1'],
-            'content' => ['nullable', 'array'],
-            'page_count' => ['nullable', 'integer', 'min:0', 'max:10000'],
-            'guideMode' => ['nullable', 'in:none,lined,grid,dotted'],
-            'pageBackgroundColor' => ['nullable', 'regex:/^#[0-9a-fA-F]{6}$/'],
+            'content' => DocumentPayloadRules::content(),
+            'page_count' => DocumentPayloadRules::pageCount(),
+            'guideMode' => DocumentPayloadRules::guideModeRest(),
+            'pageBackgroundColor' => DocumentPayloadRules::pageBackgroundColor(),
         ]);
 
         $version = $request->integer('version');
@@ -292,7 +307,7 @@ class DocumentController extends Controller
         $request->validate([
             'pages' => ['required', 'array', 'min:1'],
             'pages.*.page' => ['required', 'integer', 'min:1'],
-            'pages.*.image' => ['required', 'string'],
+            'pages.*.image' => DocumentPayloadRules::pageImage(),
         ]);
 
         $incoming = [];
