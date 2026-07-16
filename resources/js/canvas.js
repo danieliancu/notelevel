@@ -7065,8 +7065,9 @@
                             && virtualKeyboardTarget.element === element;
                         if (!alreadyEditing) {
                             startVirtualTextEditing(element);
+                        } else {
+                            trackVirtualCaretDrag(event);
                         }
-                        trackVirtualCaretDrag(event);
                         return;
                     }
                     selectTextElement(element.id, { focus: true });
@@ -7296,8 +7297,9 @@
                                 && virtualKeyboardTarget.col === col;
                             if (!alreadyEditing) {
                                 startVirtualTableEditing(element, row, col);
+                            } else {
+                                trackVirtualCaretDrag(event);
                             }
-                            trackVirtualCaretDrag(event);
                             return;
                         }
                         selectTableElement(element.id);
