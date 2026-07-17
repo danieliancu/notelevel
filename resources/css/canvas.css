@@ -80,6 +80,55 @@ body {
     pointer-events: none;
 }
 
+.canvas-scrollbar {
+    position: fixed;
+    z-index: 16;
+    display: none;
+    pointer-events: none;
+}
+
+.canvas-scrollbar.is-visible {
+    display: block;
+    pointer-events: auto;
+}
+
+.canvas-scrollbar-vertical {
+    top: var(--canvas-top);
+    right: 2px;
+    bottom: 14px;
+    width: 8px;
+}
+
+.canvas-scrollbar-horizontal {
+    left: calc(var(--canvas-left) + 2px);
+    right: calc(var(--canvas-right) + 14px);
+    bottom: 2px;
+    height: 8px;
+}
+
+.canvas-scrollbar-thumb {
+    position: absolute;
+    background: rgba(52, 64, 84, 0.28);
+    border-radius: 999px;
+    cursor: pointer;
+    touch-action: none;
+}
+
+.canvas-scrollbar-thumb:hover,
+.canvas-scrollbar-thumb.is-dragging {
+    background: rgba(52, 64, 84, 0.44);
+}
+
+.canvas-scrollbar-vertical .canvas-scrollbar-thumb {
+    left: 0;
+    right: 0;
+}
+
+.canvas-scrollbar-horizontal .canvas-scrollbar-thumb {
+    top: 0;
+    bottom: 0;
+}
+
 .page-slide-transition img {
     position: absolute;
     inset: 0;

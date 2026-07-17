@@ -48,6 +48,12 @@
     <canvas id="pad" aria-label="Writing surface"></canvas>
     <canvas id="guidePad" class="guide-canvas" aria-hidden="true"></canvas>
     <div class="text-layer" id="textLayer" aria-label="Text layer"></div>
+    <div class="canvas-scrollbar canvas-scrollbar-vertical" id="canvasScrollY" aria-hidden="true">
+        <div class="canvas-scrollbar-thumb" id="canvasScrollYThumb"></div>
+    </div>
+    <div class="canvas-scrollbar canvas-scrollbar-horizontal" id="canvasScrollX" aria-hidden="true">
+        <div class="canvas-scrollbar-thumb" id="canvasScrollXThumb"></div>
+    </div>
     <div class="selection-rect" id="selectionRect" aria-hidden="true"></div>
     <div class="brush-cursor" id="brushCursor" aria-hidden="true"></div>
     <div class="virtual-keyboard" id="virtualKeyboard" aria-hidden="true">

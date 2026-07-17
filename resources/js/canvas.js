@@ -41,6 +41,10 @@
         const zoomOutBtn = document.getElementById('zoomOutBtn');
         const zoomLabel = document.getElementById('zoomLabel');
         const zoomResetBtn = document.getElementById('zoomResetBtn');
+        const scrollbarX = document.getElementById('canvasScrollX');
+        const scrollbarXThumb = document.getElementById('canvasScrollXThumb');
+        const scrollbarY = document.getElementById('canvasScrollY');
+        const scrollbarYThumb = document.getElementById('canvasScrollYThumb');
         const deletePageBtn = document.getElementById('deletePageBtn');
         const toolbar = document.querySelector('.toolbar');
         const aiCostBadge = document.getElementById('aiCostBadge');
@@ -1316,10 +1320,62 @@
             }
         }
 
+        function currentContentDims() {
+            const size = cssSize();
+            let base;
+            if (pageModels.has(currentPage)) {
+                const model = pageModels.get(currentPage);
+                base = fitRect(model.baseWidth, model.baseHeight, size.width, size.height);
+            } else {
+                const imageSize = pageImageSizes.get(currentPage);
+                base = imageSize
+                    ? fitRect(imageSize.width, imageSize.height, size.width, size.height)
+                    : { width: size.width, height: size.height, scale: 1 };
+            }
+            const scale = base.scale * viewZoom;
+            const width = base.scale > 0 ? (base.width / base.scale) * scale : size.width;
+            const height = base.scale > 0 ? (base.height / base.scale) * scale : size.height;
+            return { size, width, height };
+        }
+
         function clampViewState() {
-            if (viewZoom <= 1.0001) {
-                viewPanX = 0;
-                viewPanY = 0;
+            const { size, width, height } = currentContentDims();
+            const maxPanX = Math.max(0, (width - size.width) / 2);
+            const maxPanY = Math.max(0, (height - size.height) / 2);
+            viewPanX = Math.min(maxPanX, Math.max(-maxPanX, viewPanX));
+            viewPanY = Math.min(maxPanY, Math.max(-maxPanY, viewPanY));
+        }
+
+        function updateScrollbars() {
+            const { size, width, height } = currentContentDims();
+            const maxPanX = Math.max(0, (width - size.width) / 2);
+            const maxPanY = Math.max(0, (height - size.height) / 2);
+
+            if (scrollbarX && scrollbarXThumb) {
+                const visible = maxPanX > 0.5;
+                scrollbarX.classList.toggle('is-visible', visible);
+                if (visible) {
+                    const trackWidth = scrollbarX.clientWidth;
+                    const thumbFraction = Math.min(1, size.width / width);
+                    const thumbWidth = Math.max(24, trackWidth * thumbFraction);
+                    const scrollFraction = (maxPanX - viewPanX) / (2 * maxPanX);
+                    const maxThumbOffset = Math.max(0, trackWidth - thumbWidth);
+                    scrollbarXThumb.style.width = `${thumbWidth}px`;
+                    scrollbarXThumb.style.left = `${scrollFraction * maxThumbOffset}px`;
+                }
+            }
+            if (scrollbarY && scrollbarYThumb) {
+                const visible = maxPanY > 0.5;
+                scrollbarY.classList.toggle('is-visible', visible);
+                if (visible) {
+                    const trackHeight = scrollbarY.clientHeight;
+                    const thumbFraction = Math.min(1, size.height / height);
+                    const thumbHeight = Math.max(24, trackHeight * thumbFraction);
+                    const scrollFraction = (maxPanY - viewPanY) / (2 * maxPanY);
+                    const maxThumbOffset = Math.max(0, trackHeight - thumbHeight);
+                    scrollbarYThumb.style.height = `${thumbHeight}px`;
+                    scrollbarYThumb.style.top = `${scrollFraction * maxThumbOffset}px`;
+                }
             }
         }
 
@@ -1328,6 +1384,7 @@
             renderCurrentPage().catch((error) => console.error(error));
             drawGuides();
             updateZoomIndicator();
+            updateScrollbars();
         }
 
         function scheduleViewUpdate() {
@@ -1375,9 +1432,6 @@
         }
 
         function panBy(dx, dy) {
-            if (viewZoom <= 1.0001) {
-                return;
-            }
             viewPanX += dx;
             viewPanY += dy;
             scheduleViewUpdate();
@@ -4634,6 +4688,7 @@
             await renderCurrentPage();
             drawGuides();
             updateZoomIndicator();
+            updateScrollbars();
             updatePageControl();
             updateUndoButton();
             setTool('pen');
@@ -9494,6 +9549,68 @@
         if (zoomResetBtn) {
             zoomResetBtn.addEventListener('click', resetView);
         }
+
+        function setupScrollbarDrag(thumb, track, axis) {
+            if (!thumb || !track) {
+                return;
+            }
+            let dragging = false;
+            let startClient = 0;
+            let startPan = 0;
+            let maxThumbOffset = 0;
+            let maxPan = 0;
+
+            thumb.addEventListener('pointerdown', (event) => {
+                event.preventDefault();
+                event.stopPropagation();
+                const { size, width, height } = currentContentDims();
+                maxPan = axis === 'x'
+                    ? Math.max(0, (width - size.width) / 2)
+                    : Math.max(0, (height - size.height) / 2);
+                if (maxPan <= 0) {
+                    return;
+                }
+                const trackSize = axis === 'x' ? track.clientWidth : track.clientHeight;
+                const thumbSize = axis === 'x' ? thumb.offsetWidth : thumb.offsetHeight;
+                maxThumbOffset = Math.max(1, trackSize - thumbSize);
+                startPan = axis === 'x' ? viewPanX : viewPanY;
+                startClient = axis === 'x' ? event.clientX : event.clientY;
+                dragging = true;
+                thumb.classList.add('is-dragging');
+                thumb.setPointerCapture(event.pointerId);
+            });
+
+            thumb.addEventListener('pointermove', (event) => {
+                if (!dragging) {
+                    return;
+                }
+                const current = axis === 'x' ? event.clientX : event.clientY;
+                const deltaFraction = (current - startClient) / maxThumbOffset;
+                const nextPan = Math.min(maxPan, Math.max(-maxPan, startPan - deltaFraction * (2 * maxPan)));
+                if (axis === 'x') {
+                    viewPanX = nextPan;
+                } else {
+                    viewPanY = nextPan;
+                }
+                scheduleViewUpdate();
+            });
+
+            const stopDrag = (event) => {
+                if (!dragging) {
+                    return;
+                }
+                dragging = false;
+                thumb.classList.remove('is-dragging');
+                if (thumb.hasPointerCapture(event.pointerId)) {
+                    thumb.releasePointerCapture(event.pointerId);
+                }
+            };
+            thumb.addEventListener('pointerup', stopDrag);
+            thumb.addEventListener('pointercancel', stopDrag);
+        }
+
+        setupScrollbarDrag(scrollbarXThumb, scrollbarX, 'x');
+        setupScrollbarDrag(scrollbarYThumb, scrollbarY, 'y');
 
         document.addEventListener('keydown', (event) => {
             if (event.code === 'Space' && !spacePanActive && !isFormFieldEditing() && !isTextEditing()) {
