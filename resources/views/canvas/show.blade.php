@@ -128,6 +128,18 @@
             <svg viewBox="0 0 24 24" aria-hidden="true"><path d="m9 6 6 6-6 6"/></svg>
         </button>
     </div>
+    <div class="zoom-control-group" id="zoomControlGroup">
+        <button class="zoom-reset-pill" id="zoomResetBtn" type="button" aria-label="Reset zoom to 100%" hidden>RESET</button>
+        <div class="zoom-control page-control" id="zoomControl" aria-label="Zoom controls">
+            <button id="zoomOutBtn" type="button" aria-label="Zoom out">
+                <svg viewBox="0 0 24 24" aria-hidden="true"><path d="M5 12h14"/></svg>
+            </button>
+            <span id="zoomLabel" role="button" tabindex="0" aria-label="Reset zoom" title="Reset zoom">100%</span>
+            <button id="zoomInBtn" type="button" aria-label="Zoom in">
+                <svg viewBox="0 0 24 24" aria-hidden="true"><path d="M12 5v14"/><path d="M5 12h14"/></svg>
+            </button>
+        </div>
+    </div>
     <button class="delete-page-float" id="deletePageBtn" type="button" aria-label="Delete current page">
         <svg viewBox="0 0 24 24" aria-hidden="true"><path d="M3 6h18"/><path d="M8 6V4h8v2"/><path d="M6.5 6l1 14h9l1-14"/><path d="M10 11v5"/><path d="M14 11v5"/></svg>
     </button>

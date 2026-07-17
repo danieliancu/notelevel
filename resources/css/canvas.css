@@ -971,7 +971,7 @@ body {
     z-index: 15;
     display: flex;
     align-items: center;
-    gap: clamp(6px, 1.8vw, 10px);
+    gap: 0;
     color: rgba(52, 64, 84, 0.34);
     font-size: clamp(11px, 2.6vw, 14px);
     font-weight: 600;
@@ -1006,6 +1006,50 @@ body {
     stroke-width: 2;
     stroke-linecap: round;
     stroke-linejoin: round;
+}
+
+.zoom-control-group {
+    position: fixed;
+    top: max(20px, env(safe-area-inset-top), var(--canvas-top, 0px));
+    right: max(20px, env(safe-area-inset-right));
+    z-index: 15;
+    display: flex;
+    align-items: center;
+    gap: clamp(6px, 1.8vw, 10px);
+    pointer-events: auto;
+}
+
+.zoom-control {
+    position: static;
+}
+
+.zoom-control #zoomLabel {
+    min-width: 3.4em;
+    text-align: center;
+    cursor: pointer;
+    user-select: none;
+}
+
+.zoom-reset-pill {
+    height: 1.2em;
+    padding: 10px 5px;
+    display: flex;
+    place-items: center;
+    border: 1px solid rgba(52, 64, 84, 0.34);
+    border-radius: 999px;
+    background: transparent;
+    color: rgba(52, 64, 84, 0.34);
+    font-size: clamp(11px, 2.6vw, 14px);
+    line-height: 1.2;
+    font-weight: 700;
+    letter-spacing: 0.04em;
+    cursor: pointer;
+    box-shadow: none;
+    font-size: 10px;
+}
+
+.zoom-reset-pill[hidden] {
+    display: none;
 }
 
 .delete-page-float {
